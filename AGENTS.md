@@ -2,12 +2,12 @@
 
 ## Project Structure & Module Organization
 
-- Use a `src/` layout for the Python app, e.g. `src/latticeville/`.
+- Core package lives at `latticeville/` in the repo root.
 - Keep the simulation core separate from rendering so the loop stays testable:
-  - `src/latticeville/sim/` for the world model and discrete time-step logic
-  - `src/latticeville/render/` for Textual/Rich views and ASCII art rendering
-  - `src/latticeville/db/` for SQLite access and persistence
-  - `src/latticeville/llm/` for local LLM adapters (Ollama, MLX, vLLM)
+  - `latticeville/sim/` for the world model and discrete time-step logic
+  - `latticeville/render/` for Rich views and ASCII art rendering
+  - `latticeville/db/` for SQLite access and persistence
+  - `latticeville/llm/` for local LLM adapters (Ollama, MLX, vLLM)
 - Suggested non-code directories:
   - `assets/` for ASCII templates, palettes, or map fixtures
   - `data/` for local SQLite files (gitignored)
@@ -15,18 +15,25 @@
 
 ## Build, Test, and Development Commands
 
-- Add a `pyproject.toml` and document the exact commands once set up.
-- Example commands (replace with the real ones you add):
-  - `python -m latticeville` - run the local simulation loop
-  - `python -m pytest` - run tests
-  - `python -m ruff check .` - lint (if configured)
+- Use `uv` for dependency management and tool execution (`uv sync`, `uv add`).
+- Example commands:
+  - `uv run python -m latticeville` - run the local simulation loop
+  - `uv run pytest` - run tests
+  - `uv run ruff check .` - lint
+  - `uv run ruff format .` - format
 
 ## Coding Style & Naming Conventions
 
 - Use 4-space indentation, type hints where practical, and docstrings for public APIs.
 - Prefer explicit names: `time_step.py`, `world_state.py`, `ascii_renderer.py`.
 - Keep renderer interfaces narrow so the sim engine is UI-agnostic.
-- If a formatter/linter is added, run it on every change and note the command here.
+- Run `ruff check` and `ruff format` on every change.
+
+## CLI Rendering
+
+- Use Rich for a simple, pane-based CLI (e.g., `Layout` + `Panel`) to show context
+  alongside the simulation view.
+- Keep rendering stateless: accept the world state and return ASCII/console output.
 
 ## Testing Guidelines
 

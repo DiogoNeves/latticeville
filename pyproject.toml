@@ -1,0 +1,17 @@
+[project]
+name = "latticeville"
+version = "0.1.0"
+description = "AI Village Simulation named Latticeville"
+requires-python = ">=3.12"
+dependencies = [
+  "rich",
+]
+
+[dependency-groups]
+dev = [
+  "pytest",
+  "ruff",
+]
+
+[tool.ruff]
+target-version = "py312"
