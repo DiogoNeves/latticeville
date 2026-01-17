@@ -64,14 +64,21 @@ When agents talk, each utterance is generated using:
 
 This keeps dialog consistent with relationship history and prior interactions.
 
-## Sandbox environment grounding
-The world is represented as a tree of locations and objects.  
-Agents maintain **partial subtrees** for locations they know.  
-The agent’s action is grounded by prompting the LLM to select:
-1. A suitable area (prefer current area if possible).
-2. A subarea/object within that area.  
+## World representation and agent views
+The environment is modeled as a **tree of areas and objects** (root = world, children = areas like houses/cafe, leaves = objects like stove, desk). A containment edge means “X is in Y.” This tree is converted to natural language (e.g., “there is a stove in the kitchen”) when prompting the LLM.
 
-Once selected, the game engine handles actual movement and object state changes.
+Each agent maintains a **personal subgraph** of that tree:
+- Initialized with the agent’s home, workplace, and common places.
+- Expanded as the agent explores and perceives new areas.
+- Potentially stale when the agent leaves an area, updated on re-entry.
+
+Perception is **local**: at each step, the sandbox server sends nearby agents and objects within a visual range. These observations are stored in the memory stream and inform reactions.
+
+To ground an action, the LLM is asked to choose:
+1. A suitable area (prefer the current area if possible).
+2. A subarea/object within that area.
+
+Once a location/object is selected, the game engine handles movement and applies object state changes (e.g., “coffee machine: off → brewing”) based on the natural-language action.
 
 ## Diagrams
 
