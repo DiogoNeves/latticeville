@@ -11,7 +11,7 @@ Latticeville is a local-only simulation for studying multi-agent systems with me
 - **Language:** Python 3.12+
 - **Package Manager:** `uv` (modern Python package manager)
 - **Rendering:** Rich (terminal UI library)
-- **Database:** SQLite (via Python stdlib)
+- **Persistence:** JSONL run logs (file-based)
 - **LLM Backends:** Local adapters (Ollama, MLX, vLLM) via environment configuration
 - **Testing:** pytest
 - **Linting/Formatting:** ruff
@@ -42,10 +42,10 @@ latticeville/
 │   ├── app.py             # Application entry and main loop
 │   ├── sim/               # Simulation core (world model, agents, tick logic)
 │   ├── render/            # Terminal rendering (Rich, ASCII views)
-│   ├── db/                # SQLite persistence (memories, replay logs)
+│   ├── db/                # Persistence helpers (memories, replay logs)
 │   └── llm/               # Local LLM adapters (Ollama, MLX, vLLM)
 ├── tests/                 # Automated tests (pytest)
-├── data/                  # Local SQLite files (gitignored)
+├── data/                  # Local run logs and state (gitignored)
 ├── assets/                # ASCII templates, palettes, map fixtures
 ├── thinking/              # Design docs and research notes
 │   ├── spec.md            # Technical specification
@@ -57,7 +57,7 @@ latticeville/
 **Module Responsibilities:**
 - `latticeville/sim/` - World model and discrete time-step logic (testable, UI-agnostic)
 - `latticeville/render/` - Rich views and ASCII art rendering (stateless, accepts state)
-- `latticeville/db/` - SQLite access and persistence for memory streams
+- `latticeville/db/` - Persistence helpers for memory streams and replay logs
 - `latticeville/llm/` - Local LLM adapters and prompt helpers (Ollama, MLX, vLLM)
 
 ## Build & Test Commands
@@ -103,7 +103,7 @@ latticeville/
 - This project is local-only. Do not add networked dependencies or telemetry.
 - Configure LLM backends via environment variables (e.g., `OLLAMA_HOST`) and keep
   credentials out of the repo.
-- Store SQLite data in `data/` (gitignored). Schema validation and updates happen at boot time.
+- Store run logs and local state in `data/` (gitignored).
 
 ## Commit & Pull Request Guidelines
 
@@ -158,7 +158,7 @@ latticeville/
 
 ## Edge Cases & Gotchas
 
-- **SQLite files:** Stored in `data/` directory (gitignored). Schema validation and updates should happen at boot time—ensure database is in correct state when the application starts.
+- **Run logs:** Stored in `data/` directory (gitignored). Ensure the directory is writable before starting a run.
 - **LLM Configuration:** All LLM backends configured via environment variables. No hardcoded endpoints.
 - **Rendering:** Keep renderer interfaces narrow—sim engine must remain UI-agnostic.
 - **Memory Stream:** Append-only design. Retrieval uses scoring (recency + relevance + importance).

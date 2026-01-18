@@ -125,16 +125,16 @@ Below are options for how to connect simulator and viewers and how to store repl
 **When to choose**
 - When you want multi-process viewers or long-lived “watchers” without embedding everything into one process.
 
-### Option C — SQLite as the event/replay store (queryable timeline)
+### Option C — Queryable store for replay and memory (future)
 
 **Design**
-- Simulator writes tick rows and event rows to SQLite (optionally snapshots).
+- Simulator writes tick rows and event rows to a queryable store (optionally snapshots).
 - Viewers query “latest tick” and render, or follow a polling loop.
 
 **Pros**
 - Queryable timeline (“show last 50 moves”, “filter only agent X”, etc.).
 - Random access and faster seeking for replay (especially with periodic snapshots).
-- Can unify replay logging and memory persistence under one tech.
+- Can unify replay logging and memory persistence under one storage layer.
 
 **Cons**
 - Schema, migrations, and versioning complexity early.
@@ -142,15 +142,15 @@ Below are options for how to connect simulator and viewers and how to store repl
 - Overkill for the first E2E validation.
 
 **When to choose**
-- When you want richer analytics/debugging queries, or when memory persistence is already mature and you want a single persistence mechanism.
+- When you want richer analytics/debugging queries, or long-lived runs with offline analysis.
 
-## Do we need SQLite right now?
+## Do we need a queryable store right now?
 
 **For sim↔viewer communication and replay**: no. Option A (in-process + JSONL) is usually the fastest path to a robust E2E loop with replay.
 
 **For memory persistence**: maybe later. A good pattern is:
 - v1: in-memory memory store + deterministic tests + optional JSONL export
-- v2+: SQLite for long-lived runs, richer queries, and offline analysis
+- v2+: evaluate a queryable store for long-lived runs, richer queries, and offline analysis
 
 ## Open questions (to answer as we build)
 

@@ -31,7 +31,7 @@ engine and viewer remain strictly separated. 🧱🤖
 - `latticeville/sim/` contains world state, agents, and tick logic.
 - `latticeville/render/` contains terminal rendering only.
 - The renderer accepts state and returns output; no mutation.
-- `latticeville/db/` optionally holds SQLite persistence for memories and replay logs (defer for v1).
+- `latticeville/db/` optionally holds persistence for memories and replay logs (defer for v1).
 - `latticeville/llm/` holds local LLM adapters and prompt helpers.
 
 ## World Model (tree, paper-aligned)
