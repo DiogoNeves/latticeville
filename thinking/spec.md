@@ -109,7 +109,7 @@ Select top-k memories that fit the context window.
 - Viewers are tick-synchronized: they see whole-tick snapshots/events only (no partial updates).
 - Any future simulator inputs (pause/step/commands) must enter as explicit simulator inputs,
   applied only at tick boundaries.
-- Replay is event-sourced with periodic snapshots (see `thinking/architecture.md`).
+- Replay is event-sourced with periodic snapshots (see [Architecture](thinking/architecture.md)).
 
 # Questions / Open Decisions
 - Choose the single behavioral variable: energy or curiosity?
