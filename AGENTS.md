@@ -1,5 +1,37 @@
 # Repository Guidelines
 
+Guidelines for AI coding agents working on Latticeville. This file complements README.md with technical conventions, patterns, and restrictions.
+
+## Project Overview
+
+Latticeville is a local-only simulation for studying multi-agent systems with memory. It implements a memory-first agent loop (perceive → remember → retrieve → act) inspired by the Generative Agents paper. The architecture separates simulation logic from rendering for testability.
+
+## Technology Stack
+
+- **Language:** Python 3.12+
+- **Package Manager:** `uv` (modern Python package manager)
+- **Rendering:** Rich (terminal UI library)
+- **Database:** SQLite (via Python stdlib)
+- **LLM Backends:** Local adapters (Ollama, MLX, vLLM) via environment configuration
+- **Testing:** pytest
+- **Linting/Formatting:** ruff
+
+## Environment & Setup
+
+**Prerequisites:**
+- Python 3.12.9 (see `.python-version`)
+- `uv` package manager installed
+
+**Setup:**
+```bash
+uv sync                    # Install dependencies
+uv run python -m latticeville  # Run simulation
+```
+
+**Environment Variables:**
+- `OLLAMA_HOST` - Optional, defaults to localhost for Ollama LLM backend
+- LLM backends configured via environment variables (no credentials in repo)
+
 ## Project Structure & Module Organization
 
 ```
@@ -28,14 +60,21 @@ latticeville/
 - `latticeville/db/` - SQLite access and persistence for memory streams
 - `latticeville/llm/` - Local LLM adapters and prompt helpers (Ollama, MLX, vLLM)
 
-## Build, Test, and Development Commands
+## Build & Test Commands
 
-- Use `uv` for dependency management and tool execution (`uv sync`, `uv add`).
-- Example commands:
-  - `uv run python -m latticeville` - run the local simulation loop
-  - `uv run pytest` - run tests
-  - `uv run ruff check .` - lint
-  - `uv run ruff format .` - format
+**Dependency Management:**
+- Use `uv` for all package operations: `uv sync`, `uv add <package>`
+- Add dev dependencies to `[dependency-groups.dev]` in `pyproject.toml`
+
+**Running:**
+- `uv run python -m latticeville` - Run the simulation loop
+- `uv run pytest` - Run all tests
+- `uv run pytest tests/path/to/test_file.py` - Run specific test file
+
+**Code Quality:**
+- `uv run ruff check .` - Lint code
+- `uv run ruff format .` - Format code
+- Both must pass before committing
 
 ## Coding Style & Naming Conventions
 
@@ -52,7 +91,10 @@ latticeville/
 
 ## Testing Guidelines
 
-- Plan to use `pytest` with tests in `tests/` and names like `test_*.py`.
+- Use `pytest` with tests in `tests/` and names like `test_*.py`.
+- This is an experimental project—focus on validation of output and states rather than extensive test coverage.
+- Prioritize proving the system works as expected (e.g., agent behavior matches paper concepts).
+- Reference the [Generative Agents paper](https://arxiv.org/abs/2304.03442) when validating behavior, but this isn't a research project—practical validation over scientific rigor.
 - Focus on deterministic unit tests for the discrete step engine and world model.
 - For rendering, include snapshot-style tests using ASCII fixtures when possible.
 
@@ -61,11 +103,69 @@ latticeville/
 - This project is local-only. Do not add networked dependencies or telemetry.
 - Configure LLM backends via environment variables (e.g., `OLLAMA_HOST`) and keep
   credentials out of the repo.
-- Store SQLite data in `data/` (gitignored) and keep schema migrations tracked in
-  code or `migrations/` if introduced.
+- Store SQLite data in `data/` (gitignored). Schema validation and updates happen at boot time.
 
 ## Commit & Pull Request Guidelines
 
-- Existing commit messages are short, sentence-case summaries (e.g., "Fix capitalization in project title").
-- Keep commits focused and descriptive; prefer one logical change per commit.
-- For PRs, include a short summary, rationale, and example CLI output for UI changes.
+**Commit Messages:**
+- Short, sentence-case summaries (e.g., "Fix capitalization in project title")
+- One logical change per commit
+- Focused and descriptive
+
+**Pull Requests:**
+- Include short summary and rationale
+- For UI changes, include example CLI output
+- All tests and lint checks must pass
+- Keep PRs focused on a single feature or fix
+- This is a personal project open to the public—no formal review process required
+
+## Security & Permissions
+
+**AI Agents May:**
+- Read any file in the repository
+- Create/edit code files following conventions
+- Run linting and formatting tools
+- Run tests locally
+- Add dependencies via `uv add` (but prefer asking for review)
+
+**AI Agents Must Request Approval For:**
+- Changing project metadata (`pyproject.toml` version, dependencies)
+- Modifying `.gitignore` or repository structure
+- Adding external API calls or networked dependencies
+- Changing core architecture decisions
+- Committing directly to main branch (use PRs)
+
+**Never:**
+- Commit secrets, API keys, or credentials
+- Add telemetry or external tracking
+- Break the local-only principle
+
+## Good & Bad Examples
+
+**✅ Good Patterns:**
+- Stateless renderers that accept world state
+- Deterministic simulation logic (testable)
+- Type hints on public APIs
+- Explicit file names: `time_step.py`, `world_state.py`
+
+**❌ Avoid:**
+- Tight coupling between sim and render modules
+- Stateful renderers that mutate world state
+- Networked dependencies or external APIs
+- Vague naming or abbreviations
+
+*Note: As the codebase grows, add specific file examples here.*
+
+## Edge Cases & Gotchas
+
+- **SQLite files:** Stored in `data/` directory (gitignored). Schema validation and updates should happen at boot time—ensure database is in correct state when the application starts.
+- **LLM Configuration:** All LLM backends configured via environment variables. No hardcoded endpoints.
+- **Rendering:** Keep renderer interfaces narrow—sim engine must remain UI-agnostic.
+- **Memory Stream:** Append-only design. Retrieval uses scoring (recency + relevance + importance).
+
+## When Stuck / Escalation
+
+- **Ambiguous requirements:** Ask clarifying questions before implementing
+- **Architecture decisions:** Propose plan and request review
+- **Breaking changes:** Discuss impact and get approval
+- **Unclear patterns:** Reference `thinking/spec.md` for design intent

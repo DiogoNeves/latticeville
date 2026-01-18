@@ -1,6 +1,6 @@
 # Latticeville
 
-A local-only simulation for studying multi-agent systems with memory. Implements a memory-first agent loop inspired by the Generative Agents paper, focusing on how agents perceive, remember, retrieve, and act in a small world.
+A local-only simulation for studying multi-agent systems with memory. Implements a memory-first agent loop inspired by the [Generative Agents paper](https://arxiv.org/abs/2304.03442), focusing on how agents perceive, remember, retrieve, and act in a small world.
 
 **Status:** Early development — core simulation loop in progress.
 
