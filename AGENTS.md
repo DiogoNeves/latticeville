@@ -2,16 +2,31 @@
 
 ## Project Structure & Module Organization
 
-- Core package lives at `latticeville/` in the repo root.
-- Keep the simulation core separate from rendering so the loop stays testable:
-  - `latticeville/sim/` for the world model and discrete time-step logic
-  - `latticeville/render/` for Rich views and ASCII art rendering
-  - `latticeville/db/` for SQLite access and persistence
-  - `latticeville/llm/` for local LLM adapters (Ollama, MLX, vLLM)
-- Suggested non-code directories:
-  - `assets/` for ASCII templates, palettes, or map fixtures
-  - `data/` for local SQLite files (gitignored)
-  - `tests/` for automated tests
+```
+latticeville/
+├── latticeville/          # Core package
+│   ├── __init__.py
+│   ├── __main__.py        # Entry point: `python -m latticeville`
+│   ├── app.py             # Application entry and main loop
+│   ├── sim/               # Simulation core (world model, agents, tick logic)
+│   ├── render/            # Terminal rendering (Rich, ASCII views)
+│   ├── db/                # SQLite persistence (memories, replay logs)
+│   └── llm/               # Local LLM adapters (Ollama, MLX, vLLM)
+├── tests/                 # Automated tests (pytest)
+├── data/                  # Local SQLite files (gitignored)
+├── assets/                # ASCII templates, palettes, map fixtures
+├── thinking/              # Design docs and research notes
+│   ├── spec.md            # Technical specification
+│   └── paper/             # Paper summaries and references
+├── pyproject.toml         # Project metadata and dependencies
+└── README.md              # Project overview and quickstart
+```
+
+**Module Responsibilities:**
+- `latticeville/sim/` - World model and discrete time-step logic (testable, UI-agnostic)
+- `latticeville/render/` - Rich views and ASCII art rendering (stateless, accepts state)
+- `latticeville/db/` - SQLite access and persistence for memory streams
+- `latticeville/llm/` - Local LLM adapters and prompt helpers (Ollama, MLX, vLLM)
 
 ## Build, Test, and Development Commands
 
