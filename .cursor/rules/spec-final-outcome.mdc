@@ -1,0 +1,21 @@
+---
+description: Spec file should describe final intended outcome, not phased implementation
+globs: thinking/spec.md
+alwaysApply: false
+---
+
+# Spec File Guidelines
+
+When editing `thinking/spec.md`:
+
+- The content should represent the **final intended outcome** of the project.
+- Do **not** include phased implementation statements like:
+  - "optional in v1"
+  - "defer for v1"
+  - "for v1"
+  - "optional for v1"
+  - Similar versioning qualifiers
+- Write the spec as if describing the complete, final system.
+- Implementation strategy and phasing should be tracked elsewhere (e.g., `thinking/master_plan.md` or issue tracking), not in the spec.
+
+The spec is a vision document, not an implementation roadmap.
