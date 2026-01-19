@@ -54,6 +54,11 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 5. **Act** (single action description, which may include dialogue/utterances, + optional location change).  
 6. **Write back** action and any reflections/plans into memory.  
 
+### Tick-Based State Consistency
+- Agents perceive state only as it existed at the end of the previous tick.  
+- All agent updates within a tick see the same world state snapshot (from the end of the previous tick).  
+- All state updates are applied at the end of the tick. The order in which agents are processed within a tick does not affect what state other agents observe.  
+
 ### Object State Changes
 - When an agent acts on an object, the LLM determines what state change should occur (e.g., action "making espresso" → coffee machine state changes from "off" to "brewing coffee").  
 - The canonical world state is updated with the new object state.  
@@ -83,7 +88,7 @@ The agent's own action (from step 5 of the loop) is recorded as an observation i
 - These can be modeled as memories with `type=annotation` (or a dedicated table/stream),
   typically with a `location_id`.  
 
-### Retrieval Scoring (minimal)
+### Retrieval Scoring
 Score = recency + relevance + importance, normalized to [0, 1].  
 - **Recency** decays exponentially since last access.  
 - **Relevance** can start as simple keyword overlap, or a simple BM25 implementation.  
@@ -107,20 +112,22 @@ Select top-k memories that fit the context window.
 - Avoid external APIs.  
 - Batch multiple requests wherever possible (see [vLLM docs](https://docs.vllm.ai/en/latest/)). This requires experimentation but we are likely going to process multiple agents at the same time.  
 
-## Rendering (terminal)
-- For v1, rendering is a debug view that outputs simulation state per tick (pretty later).
-- Multiple viewers should be attachable (e.g., one prints summary, one logs JSON, one draws ASCII).
-- Viewers are tick-synchronized: they see whole-tick snapshots/events only (no partial updates).
-- Any future simulator inputs (pause/step/commands) must enter as explicit simulator inputs,
-  applied only at tick boundaries.
-- Replay is event-sourced with periodic snapshots (see [Architecture](thinking/architecture.md)).
+## Movement and Location Changes
+- When an agent decides to move (step 5 of the agent loop), it specifies a destination location (area or object).  
+- Each location-to-location edge in the world tree has a fixed tick cost (`travel_ticks`). Total travel time is calculated by summing these costs along the path from current location to destination (graph-based distance, not geometric pathfinding). During travel, the agent is **in transit** and cannot interact or converse (prevents “talking before arrival”).  
+- While in transit, the agent is not considered present in any area for perception/visibility purposes.  
+- When `travel_ticks` reaches 0, the agent arrives: update `current_location` at the end of that tick and emit `MOVE(agent_id, from_location, to_location)`.  
+- Note: this diverges from the paper, which computes walking paths in a rendered environment/game engine ([paper](https://arxiv.org/pdf/2304.03442)); we use graph-based distance calculation with fixed tick costs per edge instead.  
 
-# Questions / Open Decisions
-- Should relevance use embeddings or simple keyword overlap for v1?
-- Should reflections be included in the first milestone or deferred?
-- What exactly goes into `TickPayload`: which parts of canonical state vs belief summaries?
-- Should we standardize events early (e.g., `MOVE(agent_id, from, to)`) or keep free-text?
+## Rendering (terminal)
+- Multiple viewers can be attachable (e.g., one prints summary, one logs JSON, one draws ASCII).  
+- Viewers are tick-synchronized: they see whole-tick snapshots/events only (no partial updates).  
+- Any future simulator inputs (pause/step/commands) must enter as explicit simulator inputs,
+  applied only at tick boundaries.  
+- Replay is event-sourced with periodic snapshots (see [Architecture](thinking/architecture.md)).  
+- A simple state debugger can be rendered as a separate viewer.  
 
 # References
-- Paper Abstract: https://arxiv.org/abs/2304.03442
-- Paper PDF: https://arxiv.org/pdf/2304.03442
+- Paper Summary: [/thinking/paper/summary.md](/thinking/paper/summary.md)  
+- Paper Abstract: https://arxiv.org/abs/2304.03442  
+- Paper PDF: https://arxiv.org/pdf/2304.03442  
