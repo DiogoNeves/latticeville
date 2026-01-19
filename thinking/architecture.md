@@ -37,7 +37,7 @@ flowchart LR
 - **Per-agent belief state**: each agent maintains its own internal representation of the world (same tree schema), which may be **partial or stale** relative to the canonical world.
   - This allows divergence (e.g., an agent hasn’t perceived a change yet) while keeping data structures consistent.
 
-This aligns with the *Generative Agents* world modeling approach (environment represented as a containment tree of locations/objects, converted to natural language for prompting) as summarized in `thinking/paper/summary.md` and described in the paper itself ([arXiv abstract](https://arxiv.org/abs/2304.03442)).
+This aligns with the *Generative Agents* world modeling approach (environment represented as a containment tree of locations/objects, converted to natural language for prompting) as summarized in [Summary](thinking/paper/summary.md) and described in the paper itself ([arXiv abstract](https://arxiv.org/abs/2304.03442)).
 
 ## Sim → viewer contract (recommended shape)
 
