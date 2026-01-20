@@ -110,6 +110,7 @@ Agents only perceive what exists in their current location—they cannot observe
 ### Location notes / annotations
 
 - Agents can attach lightweight _annotations_ to locations (e.g., "The cafe is usually crowded").
+- These exist only in the agent's own belief tree (not in the canonical world state), as they represent subjective observations about locations.
 - These can be modeled as memories with `type=annotation` (or a dedicated table/stream),
   typically with a `location_id`.
 

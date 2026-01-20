@@ -39,6 +39,42 @@ flowchart LR
 
 This aligns with the *Generative Agents* world modeling approach (environment represented as a containment tree of locations/objects, converted to natural language for prompting) as summarized in [Summary](thinking/paper/summary.md) and described in the paper itself ([arXiv abstract](https://arxiv.org/abs/2304.03442)).
 
+### Location annotations
+
+Agents can attach lightweight **annotations** to locations in their belief trees (e.g., "The cafe is usually crowded"). These exist only in the agent's belief state, not in the canonical world, representing subjective observations about locations. These can be modeled as memories with `type=annotation` (or a dedicated table/stream), typically with a `location_id`.
+
+## Tick-based state consistency
+
+To ensure deterministic behavior and consistent perception:
+
+- **Agents perceive state only as it existed at the end of the previous tick**.
+- **All agent updates within a tick see the same world state snapshot** (from the end of the previous tick).
+- **All state updates are applied at the end of the tick**. The order in which agents are processed within a tick does not affect what state other agents observe.
+
+This guarantees that agents operating in parallel within a tick cannot observe each other's in-progress changes, maintaining consistency and determinism.
+
+## Object state changes
+
+When an agent acts on an object:
+
+- The LLM determines what state change should occur (e.g., action "making espresso" → coffee machine state changes from "off" to "brewing coffee").
+- The canonical world state is updated with the new object state.
+- Agents perceive updated object states in the next tick (during the perception phase).
+
+This separation ensures that state transitions are explicit and that perception always operates on stable, complete state snapshots.
+
+## Movement and location changes
+
+Movement uses a graph-based distance calculation with fixed tick costs per edge:
+
+- Each location-to-location edge in the world tree has a fixed `travel_ticks` cost.
+- Total travel time is calculated by summing these costs along the path from current location to destination (graph-based distance, not geometric pathfinding).
+- During travel, the agent is **in transit** and cannot interact or converse (prevents "talking before arrival").
+- While in transit, the agent is not considered present in any area for perception/visibility purposes.
+- When `travel_ticks` reaches 0, the agent arrives: `current_location` is updated at the end of that tick and a `MOVE(agent_id, from_location, to_location)` event is emitted.
+
+This diverges from the Generative Agents paper, which computes walking paths in a rendered environment/game engine; we use graph-based distance calculation with fixed tick costs per edge instead.
+
 ## Sim → viewer contract (recommended shape)
 
 Define a single “whole tick” payload that viewers consume:
@@ -151,6 +187,15 @@ Below are options for how to connect simulator and viewers and how to store repl
 **For memory persistence**: maybe later. A good pattern is:
 - v1: in-memory memory store + deterministic tests + optional JSONL export
 - v2+: evaluate a queryable store for long-lived runs, richer queries, and offline analysis
+
+## LLM backend
+
+The simulation uses local LLM backends exclusively (no external APIs):
+
+- **Primary backend**: [Qwen3](https://github.com/QwenLM/Qwen3) model via [vLLM Metal](https://github.com/vllm-project/vllm-metal), with a shallow adapter in `latticeville/llm/`.
+- **Batching**: Multiple agent requests are batched wherever possible (see [vLLM docs](https://docs.vllm.ai/en/latest/)). This requires experimentation but we are likely going to process multiple agents at the same time.
+- **Prompts**: Should be short and deterministic where possible.
+- **Testing**: Use a `FakeLLM` for deterministic tests and fixed seeds.
 
 ## Open questions (to answer as we build)
 
