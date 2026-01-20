@@ -86,14 +86,20 @@ Each memory record is an append-only entry with:
 
 ### What gets recorded as observations
 
-Observations are direct perceptions recorded each tick:
+Observations are direct perceptions recorded each tick. Agents perceive their local environment based on visual range: they observe all agents and objects within their current area (and immediate subareas).
 
 - **Agent's own actions**: "Isabella Rodriguez is setting out the pastries"
+  - Recorded in third person after the agent performs an action (from step 5 of the loop).
 - **Other agents' actions**: "Maria Lopez is studying for a Chemistry test while drinking coffee"
+  - Only agents within visual range (same area) are observed. Each agent sees what other agents in their area are doing.
 - **Object states**: "The refrigerator is empty", "The stove is burning"
+  - Objects in the agent's current area and immediate subareas are perceived.
 - **Inter-agent interactions**: "Isabella Rodriguez and Maria Lopez are conversing about planning a Valentine's day party"
+  - When agents engage in dialogue, both participants (and any observers in the same area) record the conversation as an observation.
+  - Dialogue initiation is perceived: "John is initiating a conversation with Eddy"
+  - Full conversation exchanges are recorded as they occur, allowing agents to remember what was said.
 
-The agent's own action (from step 5 of the loop) is recorded as an observation in third person (e.g., "Isabella Rodriguez is setting out the pastries").
+Agents only perceive what exists in their current location—they cannot observe agents or objects in other areas unless they move there.
 
 ### Location notes / annotations
 
