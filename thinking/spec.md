@@ -55,10 +55,16 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
    - Other agents' actions (behaviors observed from nearby agents)
    - Object state changes (e.g., "refrigerator is empty", "stove is burning")
    - Inter-agent interactions (conversations, encounters)
-3. **Retrieve** relevant memories using a scored subset.
-4. **Decide** whether to react or follow current plan.
-5. **Act** (single action description, which may include dialogue/utterances, + optional location change).
-6. **Write back** action and any reflections/plans into memory.
+3. **Retrieve** relevant memories using a scored subset (includes observations, plans, and reflections).
+4. **Plan** (if needed):
+   - If no plan exists, create a daily plan in broad strokes (5–8 chunks).
+   - Recursively decompose plans: day plan → hour chunks → 5–15 minute actions as needed.
+   - Plans include time and location, stored in memory stream.
+5. **Decide** whether to react to new observations or follow current plan.
+   - If reacting, update the plan from that point forward.
+6. **Act** (single action description, which may include dialogue/utterances, + optional location change).
+   - Action is selected from the current plan (or generated as a reaction).
+7. **Write back** action and any reflections/plans into memory.
 
 ### Tick-Based State Consistency
 
