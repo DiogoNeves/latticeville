@@ -8,6 +8,10 @@ A local-only simulation for studying multi-agent systems with memory. Implements
 
 Latticeville simulates LLM-driven characters in a tiny world with a focus on memory systems. Each agent follows a loop: perceive → remember → retrieve → act. The simulation runs entirely locally using terminal-based ASCII rendering.
 
+In the baseline design, the LLM acts as a **decision policy**: each tick it selects exactly one structured action (e.g., MOVE/INTERACT/SAY/NOOP) via tool/function calling, and the simulator applies deterministic state transitions and logs events for replay.
+
+The simulator also supports a separate **world dynamics** step (e.g., weather/time now; later, village maintenance/services) that updates canonical state and emits events agents can perceive.
+
 ## Documentation
 
 - [Technical Specification](thinking/spec.md) — Detailed technical design and implementation details

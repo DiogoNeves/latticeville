@@ -9,6 +9,12 @@ At the end of the project, we may want to turn the most successful experiments i
 
 ## Research areas
 
+### 0) Baseline note (for context)
+
+Baseline uses a single tool-called `act` decision per tick (e.g., `MOVE` / `INTERACT` / `SAY` / `NOOP`),
+validated and executed deterministically by the simulator. Natural-language memory entries are generated
+from templates based on executed actions/events.
+
 ### 1) Constrained object interactions via exposed state-changing functions
 
 #### Idea
@@ -23,6 +29,10 @@ Examples (illustrative):
 The new state is returned as natural language statements, in the format of *observations*.  
 
 These functions can still call LLMs internally if needed (e.g., to decide *which* ingredient is taken, or to narrate a higher-level action), but the canonical state transition occurs through a designed interface.
+
+#### How it differs from baseline
+- Baseline `INTERACT(object_id, verb)` uses a small verb set and simulator-owned transition rules.
+- This experiment makes object APIs richer and more object-specific (more structure, potentially better validity).
 
 #### Why it might help
 - **Constrains interaction space** so interactions can be intentionally designed (less “anything can happen”).

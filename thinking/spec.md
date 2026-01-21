@@ -62,9 +62,38 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
    - Plans include time and location, stored in memory stream.
 5. **Decide** whether to react to new observations or follow current plan.
    - If reacting, update the plan from that point forward.
-6. **Act** (single action description, which may include dialogue/utterances, + optional location change).
-   - Action is selected from the current plan (or generated as a reaction).
-7. **Write back** action and any reflections/plans into memory.
+6. **Act** (structured action selection).
+   - The LLM selects **exactly one** action via tool/function calling (no free-text parsing).
+   - Action is chosen from the current plan (or generated as a reaction) but returned in a
+     machine-executable form.
+   - Invalid actions are handled by server-side validation and fall back to `NOOP`/`WAIT`.
+7. **Execute** the action deterministically in the simulator.
+   - Simulator applies canonical state updates and emits structured events (see below).
+8. **Write back** action (as natural language) and any reflections/plans into memory.
+   - Memory narration is generated from templates based on the executed action/event, to keep
+     memory consistent with canonical state and replay.
+
+### Action selection via tool calling (baseline)
+
+The baseline uses a single required tool call, `act`, to enforce "one decision per tick".
+
+- **Tool name**: `act`
+- **Guarantee**: model must call the tool once per tick (we include `NOOP`/`WAIT` as a valid choice)
+- **Output shape**: one of a small set of `kind` values, with arguments.
+
+Conceptual schema:
+
+```json
+{
+  "kind": "NOOP" | "WAIT" | "MOVE" | "INTERACT" | "SAY",
+  "move": { "to_location_id": "..." },
+  "interact": { "object_id": "...", "verb": "USE" | "OPEN" | "CLOSE" | "TAKE" | "DROP" },
+  "say": { "to_agent_id": "...", "utterance": "..." }
+}
+```
+
+The simulator provides a per-tick list of valid targets (visible/reachable locations, visible objects,
+visible agents). The executor validates arguments against these sets and uses `NOOP` on invalid input.
 
 ### Tick-Based State Consistency
 
@@ -74,9 +103,11 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 
 ### Object State Changes
 
-- When an agent acts on an object, the LLM determines what state change should occur (e.g., action "making espresso" → coffee machine state changes from "off" to "brewing coffee").
-- The canonical world state is updated with the new object state.
-- Agents perceive updated object states in the next tick (step 1 of the loop).
+ - When an agent acts on an object, the chosen action includes the target object and an interaction verb.
+ - The simulator applies a deterministic transition (object-specific rule/state machine) to update
+   canonical state.
+ - The simulator emits an `OBJECT_STATE_CHANGED(...)` event describing the transition.
+ - Agents perceive updated object states in the next tick (step 1 of the loop).
 
 ## Memory Stream
 
@@ -145,11 +176,29 @@ Select top-k memories that fit the context window.
 
 ## Movement and Location Changes
 
-- When an agent decides to move (step 5 of the agent loop), it specifies a destination location (area or object).
+- When an agent decides to move (step 5/6 of the agent loop), it specifies a destination location (area or object) in the `MOVE` action.
 - Each location-to-location edge in the world tree has a fixed tick cost (`travel_ticks`). Total travel time is calculated by summing these costs along the path from current location to destination (graph-based distance, not geometric pathfinding). During travel, the agent is **in transit** and cannot interact or converse (prevents “talking before arrival”).
 - While in transit, the agent is not considered present in any area for perception/visibility purposes.
 - When `travel_ticks` reaches 0, the agent arrives: update `current_location` at the end of that tick and emit `MOVE(agent_id, from_location, to_location)`.
 - Note: this diverges from the paper, which computes walking paths in a rendered environment/game engine ([paper](https://arxiv.org/pdf/2304.03442)); we use graph-based distance calculation with fixed tick costs per edge instead.
+
+## World transition model (ambient events)
+
+In addition to agent actions, the simulator may apply world-level transitions each tick (e.g., time-of-day,
+weather, ambient object changes). These are deterministic given the run seed/config and are emitted as
+events (e.g., `WEATHER_CHANGED`, `TIME_ADVANCED`). Agents perceive these changes in the next tick.
+
+This is a separate “world dynamics” step that can grow over time:
+
+- **Weather system**: e.g., `weather_state` transitions (`CLEAR` → `RAIN` → `CLEAR`), wind, temperature
+  bands. Emits `WEATHER_CHANGED(old, new)`.
+- **Village maintenance / services** (future): e.g., scheduled repairs, trash collection, power outages,
+  shop opening/closing, restocking. Emits events like `MAINTENANCE_STARTED`, `MAINTENANCE_COMPLETED`,
+  `SERVICE_OUTAGE`, `RESTOCKED`.
+- **Scheduled world events** (future): festivals, alerts, NPC deliveries, ambient announcements.
+
+The world model should remain simulator-owned (not agent-owned): it updates canonical state and emits events,
+and agents can only react by perceiving the resulting state/event stream in subsequent ticks.
 
 ## Rendering (terminal)
 
