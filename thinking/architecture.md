@@ -1,4 +1,4 @@
-# Architecture decisions (draft)
+# Architecture decisions
 
 This document records the current architectural decisions for Latticeville, plus the open questions we still need to answer. It is intentionally biased toward **early end-to-end validation** and **testability**.
 
@@ -59,8 +59,6 @@ they only react after perceiving the resulting state/events on subsequent ticks.
 - **Per-agent belief state**: each agent maintains its own internal representation of the world (same tree schema), which may be **partial or stale** relative to the canonical world.
   - This allows divergence (e.g., an agent hasn’t perceived a change yet) while keeping data structures consistent.
 
-This aligns with the _Generative Agents_ world modeling approach (environment represented as a containment tree of locations/objects, converted to natural language for prompting) as summarized in [Summary](thinking/paper/summary.md) and described in the paper itself ([arXiv abstract](https://arxiv.org/abs/2304.03442)).
-
 ### Location annotations
 
 Agents can attach lightweight **annotations** to locations in their belief trees (e.g., "The cafe is usually crowded"). These exist only in the agent's belief state, not in the canonical world, representing subjective observations about locations. These can be modeled as memories with `type=annotation` (or a dedicated table/stream), typically with a `location_id`.
@@ -82,7 +80,7 @@ When an agent acts on an object:
 - The LLM selects a structured `INTERACT` action (`object_id` + interaction verb).
 - The simulator applies a deterministic object transition (object-specific rule/state machine).
 - The canonical world state is updated with the new object state.
-- Agents perceive updated object states in the next tick (during the perception phase).
+- Agents perceive updated object states in the current tick (they are aware of their own actions).
 
 This separation ensures that state transitions are explicit and that perception always operates on stable, complete state snapshots.
 
@@ -93,12 +91,11 @@ Movement uses a graph-based distance calculation with fixed tick costs per edge:
 - Each location-to-location edge in the world tree has a fixed `travel_ticks` cost.
 - Total travel time is calculated by summing these costs along the path from current location to destination (graph-based distance, not geometric pathfinding).
 - During travel, the agent is **in transit** and cannot interact or converse (prevents "talking before arrival").
-- While in transit, the agent is not considered present in any area for perception/visibility purposes.
-- When `travel_ticks` reaches 0, the agent arrives: `current_location` is updated at the end of that tick and a `MOVE(agent_id, from_location, to_location)` event is emitted.
+- While in transit, the agent is considered present in the current travel area for perception/visibility purposes. This requires creating a traversal path within the World tree and transition locations at each `travel_ticks` (which is set to 1 to simplify). This allows agents to perceive each other on the way and maybe change plans.
 
 This diverges from the Generative Agents paper, which computes walking paths in a rendered environment/game engine; we use graph-based distance calculation with fixed tick costs per edge instead.
 
-## Sim → viewer contract (recommended shape)
+## Sim → viewer contract
 
 Define a single “whole tick” payload that viewers consume:
 
@@ -114,7 +111,7 @@ Key properties:
 - **Tick boundary**: a viewer receives payloads only after the simulator has fully applied the tick.
 - **Backpressure**: viewers are allowed to skip intermediate ticks and render only the latest state (configurable per viewer).
 
-### TickPayload (conceptual)
+### TickPayload
 
 - `tick`: integer tick id (monotonic within a run)
 - `snapshot`: optional snapshot of state at end of tick
