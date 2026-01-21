@@ -16,7 +16,7 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 - Support many agents (target ~10) with a minimal memory loop.
 - Use a discrete tick-based scheduler.
 - Provide a terminal debug viewer that prints state.
-- Include replay support: record tick-based changes and events to a local log.
+- Include replay support.
 
 # Non-Goals
 
@@ -40,10 +40,9 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 - Example: World → House (area) → Kitchen (subarea) → Stove (object).
 - Each node has: `id`, `name`, `type` (`area`, `object`, `agent`), `parent_id`,
   and ordered `children`.
-- Agents live in the tree as nodes with a current location (parent).
+- Agents live in the tree as leaf nodes with a current location (parent).
 - Each agent maintains a **personal subtree / belief view** for locations and objects it knows.
-- Agent belief views may diverge temporarily from the canonical world state (stale/partial),
-  but follow the same structural schema (tree of nodes + containment).
+- Agent belief views may diverge temporarily from the canonical world state (stale/partial), but follow the same structural schema (tree of nodes + containment).
 - Perception uses the current area node and the **object leaf nodes** contained in that area.
 - State transitions are deterministic given actions (non-determinism comes from LLM action generation).
 
@@ -52,7 +51,7 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 1. **Perceive** local environment (nearby objects + agents within visual range).
 2. **Record observations** into memory stream:
    - Agent's own actions (what the agent did)
-   - Other agents' actions (behaviors observed from nearby agents)
+   - Other agents' actions (behaviors observed from nearby agents), from the previous tick
    - Object state changes (e.g., "refrigerator is empty", "stove is burning")
    - Inter-agent interactions (conversations, encounters)
 3. **Retrieve** relevant memories using a scored subset (includes observations, plans, and reflections).
@@ -63,29 +62,31 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 5. **Decide** whether to react to new observations or follow current plan.
    - If reacting, update the plan from that point forward.
 6. **Act** (structured action selection).
-   - The LLM selects **exactly one** action via tool/function calling (no free-text parsing).
-   - Action is chosen from the current plan (or generated as a reaction) but returned in a
-     machine-executable form.
-   - Invalid actions are handled by server-side validation and fall back to `NOOP`/`WAIT`.
+   - The LLM selects **exactly one** action via tool/function calling.
+   - Action is chosen from the current plan but returned in a machine-executable form.
+   - The Agent always has to perform an action per tick, but the action can be `IDLE`
+   - Invalid actions are handled by server-side validation and fall back to `IDLE`.
 7. **Execute** the action deterministically in the simulator.
    - Simulator applies canonical state updates and emits structured events (see below).
 8. **Write back** action (as natural language) and any reflections/plans into memory.
    - Memory narration is generated from templates based on the executed action/event, to keep
      memory consistent with canonical state and replay.
 
-### Action selection via tool calling (baseline)
+### Action selection via tool calling
 
-The baseline uses a single required tool call, `act`, to enforce "one decision per tick".
+2. **`act`** (decision making): Must be called exactly once per tick to select the agent's action.
+
+#### Act tool
 
 - **Tool name**: `act`
-- **Guarantee**: model must call the tool once per tick (we include `NOOP`/`WAIT` as a valid choice)
+- **Guarantee**: model must call the tool once per tick (we include `IDLE` as a valid choice)
 - **Output shape**: one of a small set of `kind` values, with arguments.
 
 Conceptual schema:
 
 ```json
 {
-  "kind": "NOOP" | "WAIT" | "MOVE" | "INTERACT" | "SAY",
+  "kind": "IDLE" | "MOVE" | "INTERACT" | "SAY",
   "move": { "to_location_id": "..." },
   "interact": { "object_id": "...", "verb": "USE" | "OPEN" | "CLOSE" | "TAKE" | "DROP" },
   "say": { "to_agent_id": "...", "utterance": "..." }
@@ -94,11 +95,11 @@ Conceptual schema:
 
 The simulator provides a per-tick list of valid targets:
 
-- **Locations**: reachable *area/location* ids for `MOVE` (not objects).
-- **Objects**: object ids in the agent’s current area for `INTERACT`.
+- **Locations**: reachable _area/location_ ids for `MOVE` (not objects).
+- **Objects**: object ids in the agent’s current area for `INTERACT` and `query`.
 - **Agents**: agent ids in the current area for `SAY`.
 
-The executor validates arguments against these sets and uses `NOOP` on invalid input.
+The executor validates arguments against these sets and uses `IDLE` on invalid input.
 
 ### Tick-Based State Consistency
 
@@ -108,13 +109,18 @@ The executor validates arguments against these sets and uses `NOOP` on invalid i
 
 ### Object State Changes
 
- - When an agent acts on an object, the chosen action includes the target object and an interaction verb.
- - The simulator applies a deterministic transition (object-specific rule/state machine) to update
-   canonical state.
- - The simulator emits an `OBJECT_STATE_CHANGED(...)` event describing the transition.
- - Other agents perceive updated object states in the next tick (step 1 of the loop).
- - The acting agent is aware of its own action immediately (and writes it to memory), even though
-   environment perception remains tick-boundary consistent.
+- When an agent acts on an object, the chosen action includes the target object and an interaction verb.
+- The simulator applies a deterministic transition (object-specific rule/state machine) to update
+  canonical state.
+- The simulator emits an `OBJECT_STATE_CHANGED(...)` event describing the transition.
+- The state change can fail, for example when taking an item from an empty fridge, and this will be informed to the model and registered in the memory as attempted.
+- Other agents perceive updated object states in the next tick (step 1 of the loop).
+- The acting agent is aware of its own action immediately (and writes it to memory), even though
+  environment perception remains tick-boundary consistent.
+
+**Note:** The current design can lead to a race condition, whereby two agents interact with the same object, in the same tick, in a way that would be invalid.
+For example, if there is a single item on the fridge, but two agents take a single item each.
+We are going to ignore this problem and allow the simulation to continue, with an empty fridge in the example above.
 
 ## Memory Stream
 
@@ -139,24 +145,34 @@ Observations are direct perceptions recorded each tick. Agents perceive their lo
   - Objects in the agent's current area and immediate subareas are perceived.
 - **Inter-agent interactions**: "Isabella Rodriguez and Maria Lopez are conversing about planning a Valentine's day party"
   - When agents engage in dialogue, both participants (and any observers in the same area) record the conversation as an observation.
-  - Dialogue initiation is perceived: "John is initiating a conversation with Eddy"
+  - Dialogue initiation is perceived: "John is initiating a conversation with Eddy".
+  - Conversation can only happen for agents in the same location.
   - Conversation proceeds at **one turn per tick** per speaking agent (i.e., one `SAY` action per tick).
 
-Agents only perceive what exists in their current location—they cannot observe agents or objects in other areas unless they move there.
+Agents only perceive what exists in their current location. They cannot observe agents or objects in other areas unless they move there.
 
 ### Retrieval Scoring
 
 Score = recency + relevance + importance, normalized to [0, 1].
 
 - **Recency** decays exponentially since last access.
-- **Relevance** uses BM25 over the memory `description` field (baseline).
+- **Relevance** uses BM25 over the memory `description` field.
 - **Importance** assigned at creation time by asking the LLM.
 
-Select top-k memories that fit the context window.
+Select top-k memories that fit the context window. `k` should be configurable.
+
+#### Importance Scoring
+
+Importance is computed for all memory types (`observation`, `plan`, `reflection`, `action`) at creation time by asking the LLM to rate the memory's significance.
+
+- **Prompt**: The LLM is asked to rate how impactful or significant the memory is for the agent's future decision-making and behavior, on a scale of 1–10.
+- **Criteria**: Higher scores indicate memories that are likely to influence future actions, relationships, or plans (e.g., meeting someone new, completing a goal, learning something important). Lower scores indicate routine or mundane observations.
+- **Normalization**: The 1–10 scale is normalized to [0, 1] for retrieval scoring using: `normalized_importance = (importance - 1) / 9`
+- **Timing**: Importance is computed immediately after creating each memory, before it's added to the memory stream.
 
 ## Reflection
 
-- Check at the end of each agent tick: if the sum of importance scores for recent memories (since the last reflection) exceeds a threshold, trigger reflection.
+- Check at the end of each agent tick: if the sum of importance scores for recent memories (since the last reflection, inclusive) exceeds a threshold, trigger reflection.
 - Generate 3-5 insights and store as reflections.
 - Link reflections to supporting memories.
 
@@ -177,12 +193,12 @@ Select top-k memories that fit the context window.
 
 - When an agent decides to move (step 5/6 of the agent loop), it specifies a destination **location/area** id in the `MOVE` action.
 - Travel time is computed as: number of edges along the path \(\times\) a constant per-edge cost.
-  - Baseline: all edges have the same cost, and it is set to `1` tick per edge.
-- During travel, the agent is **in transit** and cannot interact or converse (prevents “talking before arrival”).
+  - All edges have the same cost, set to `1`. This should be configurable.
 - While in transit, the agent advances one edge per tick, occupying intermediate locations for perception/visibility so agents can perceive each other “on the way” and potentially re-plan.
 - When the traversal completes, update `current_location` at the end of that tick and emit
   `MOVE(agent_id, from_location, to_location)`.
-- Note: this diverges from the paper, which computes walking paths in a rendered environment/game engine ([paper](https://arxiv.org/pdf/2304.03442)); we use graph-based distance calculation with fixed tick costs per edge instead.
+
+**Note:** this diverges from the paper, which computes walking paths in a rendered environment/game engine ([paper](https://arxiv.org/pdf/2304.03442)); we use graph-based distance calculation with fixed tick costs per edge instead.
 
 ## World transition model (ambient events)
 
