@@ -1,8 +1,8 @@
-# 🏘️ Latticeville — Project + Technical Spec
+# Latticeville — Project + Technical Spec
 
 # Summary
 
-Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon village with LLM-driven characters. The main goal is to implement the core _memory-first_ loop from the Generative Agents paper using a fully local LLM system. 🧱🤖
+Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon village with LLM-driven characters. The main goal is to implement the core _memory-first_ loop from the Generative Agents paper using a fully local LLM system.
 
 **Note:** This spec reflects the intended final outcome of the project and does not encode the strategy or order in which it will be implemented.
 
@@ -44,7 +44,7 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 - Each agent maintains a **personal subtree / belief view** for locations and objects it knows.
 - Agent belief views may diverge temporarily from the canonical world state (stale/partial),
   but follow the same structural schema (tree of nodes + containment).
-- Perception uses the current area node and its immediate children.
+- Perception uses the current area node and the **object leaf nodes** contained in that area.
 - State transitions are deterministic given actions (non-determinism comes from LLM action generation).
 
 ## Core Agent Loop (per tick)
@@ -92,8 +92,13 @@ Conceptual schema:
 }
 ```
 
-The simulator provides a per-tick list of valid targets (visible/reachable locations, visible objects,
-visible agents). The executor validates arguments against these sets and uses `NOOP` on invalid input.
+The simulator provides a per-tick list of valid targets:
+
+- **Locations**: reachable *area/location* ids for `MOVE` (not objects).
+- **Objects**: object ids in the agent’s current area for `INTERACT`.
+- **Agents**: agent ids in the current area for `SAY`.
+
+The executor validates arguments against these sets and uses `NOOP` on invalid input.
 
 ### Tick-Based State Consistency
 
@@ -120,12 +125,11 @@ Each memory record is an append-only entry with:
 - `last_accessed_at` (tick)
 - `importance` (1–10)
 - `type` (`observation`, `plan`, `reflection`, `action`)
-- Optional `location_id` (when the memory is grounded in a place)
 - `links` to supporting records (for reflections)
 
 ### What gets recorded as observations
 
-Observations are direct perceptions recorded each tick. Agents perceive their local environment based on visual range: they observe all agents and objects within their current area (and immediate subareas).
+Observations are direct perceptions recorded each tick. Agents perceive their local environment based on visual range: they observe the other agents in their current area, and the objects (leaf nodes) in their current area.
 
 - **Agent's own actions**: "Isabella Rodriguez is setting out the pastries"
   - Recorded in third person after the agent performs an action (from step 5 of the loop).
@@ -136,23 +140,16 @@ Observations are direct perceptions recorded each tick. Agents perceive their lo
 - **Inter-agent interactions**: "Isabella Rodriguez and Maria Lopez are conversing about planning a Valentine's day party"
   - When agents engage in dialogue, both participants (and any observers in the same area) record the conversation as an observation.
   - Dialogue initiation is perceived: "John is initiating a conversation with Eddy"
-  - Full conversation exchanges are recorded as they occur, allowing agents to remember what was said.
+  - Conversation proceeds at **one turn per tick** per speaking agent (i.e., one `SAY` action per tick).
 
 Agents only perceive what exists in their current location—they cannot observe agents or objects in other areas unless they move there.
-
-### Location notes / annotations
-
-- Agents can attach lightweight _annotations_ to locations (e.g., "The cafe is usually crowded").
-- These exist only in the agent's own belief tree (not in the canonical world state), as they represent subjective observations about locations.
-- These can be modeled as memories with `type=annotation` (or a dedicated table/stream),
-  typically with a `location_id`.
 
 ### Retrieval Scoring
 
 Score = recency + relevance + importance, normalized to [0, 1].
 
 - **Recency** decays exponentially since last access.
-- **Relevance** can start as simple keyword overlap, or a simple BM25 implementation.
+- **Relevance** uses BM25 over the memory `description` field (baseline).
 - **Importance** assigned at creation time by asking the LLM.
 
 Select top-k memories that fit the context window.
@@ -178,11 +175,11 @@ Select top-k memories that fit the context window.
 
 ## Movement and Location Changes
 
-- When an agent decides to move (step 5/6 of the agent loop), it specifies a destination location (area or object) in the `MOVE` action.
-- Each location-to-location edge in the world tree has a fixed tick cost (`travel_ticks`). Total travel time is calculated by summing these costs along the path from current location to destination (graph-based distance, not geometric pathfinding). During travel, the agent is **in transit** and cannot interact or converse (prevents “talking before arrival”).
-- While in transit, the agent is considered present in intermediate travel locations for perception/visibility.
-  - Practically: compute a traversal path in the world tree and advance one edge per tick (`travel_ticks = 1`
-    per edge) so agents can perceive each other “on the way” and potentially re-plan.
+- When an agent decides to move (step 5/6 of the agent loop), it specifies a destination **location/area** id in the `MOVE` action.
+- Travel time is computed as: number of edges along the path \(\times\) a constant per-edge cost.
+  - Baseline: all edges have the same cost, and it is set to `1` tick per edge.
+- During travel, the agent is **in transit** and cannot interact or converse (prevents “talking before arrival”).
+- While in transit, the agent advances one edge per tick, occupying intermediate locations for perception/visibility so agents can perceive each other “on the way” and potentially re-plan.
 - When the traversal completes, update `current_location` at the end of that tick and emit
   `MOVE(agent_id, from_location, to_location)`.
 - Note: this diverges from the paper, which computes walking paths in a rendered environment/game engine ([paper](https://arxiv.org/pdf/2304.03442)); we use graph-based distance calculation with fixed tick costs per edge instead.
@@ -214,6 +211,11 @@ and agents can only react by perceiving the resulting state/event stream in subs
 - Replay/logging may store full per-tick state frames (simplest) or events with occasional state (more compact)
   (see [Architecture](thinking/architecture.md)).
 - A simple state debugger can be rendered as a separate viewer.
+
+## Tick time model
+
+- Each tick represents a fixed unit of simulated time.
+- The tick duration is a configurable constant (see `thinking/architecture.md` for configuration notes).
 
 # References
 

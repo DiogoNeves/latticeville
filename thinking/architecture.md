@@ -60,8 +60,7 @@ they only react after perceiving the resulting state/events on subsequent ticks.
   - This allows divergence (e.g., an agent hasn’t perceived a change yet) while keeping data structures consistent.
 
 ### Location annotations
-
-Agents can attach lightweight **annotations** to locations in their belief trees (e.g., "The cafe is usually crowded"). These exist only in the agent's belief state, not in the canonical world, representing subjective observations about locations. These can be modeled as memories with `type=annotation` (or a dedicated table/stream), typically with a `location_id`.
+We do not model a separate “annotation” concept. Subjective, place-related notes are just ordinary observations recorded in the memory stream (in natural language).
 
 ## Tick-based state consistency
 
@@ -89,10 +88,10 @@ This separation ensures that state transitions are explicit and that perception 
 
 Movement uses a graph-based distance calculation with fixed tick costs per edge:
 
-- Each location-to-location edge in the world tree has a fixed `travel_ticks` cost.
-- Total travel time is calculated by summing these costs along the path from current location to destination (graph-based distance, not geometric pathfinding).
+- Total travel time is calculated as: number of edges along the path \(\times\) a constant per-edge cost (graph-based distance, not geometric pathfinding).
+- Baseline: **all edges have the same cost**, set to `1` tick per edge.
 - During travel, the agent is **in transit** and cannot interact or converse (prevents "talking before arrival").
-- While in transit, the agent is considered present in the current travel area for perception/visibility purposes. This requires creating a traversal path within the World tree and transition locations at each `travel_ticks` (which is set to 1 to simplify). This allows agents to perceive each other on the way and maybe change plans.
+- While in transit, the agent advances one edge per tick, occupying intermediate locations for perception/visibility. This allows agents to perceive each other on the way and potentially change plans.
 
 This diverges from the Generative Agents paper, which computes walking paths in a rendered environment/game engine; we use graph-based distance calculation with fixed tick costs per edge instead.
 
@@ -112,7 +111,7 @@ Key properties:
 - **Latest-frame semantics**: viewers are allowed to skip intermediate ticks and render only the latest
   completed tick.
 
-### TickFrame
+### TickPayload
 
 - `tick`: integer tick id (monotonic within a run)
 - `state`: state at end of tick (what we previously called a “snapshot”)
@@ -138,7 +137,7 @@ Viewers must only render at tick boundaries; they should never observe partially
 - **Dropping intermediate ticks is fine** for most viewers: they want “latest state” not “every frame”.
 - **Debug viewers** may retain the last \(k\) tick frames/events to render sequences or timelines.
 
-The simulator should not retain per-viewer event buffers; it publishes `TickFrame`s, and each viewer decides
+The simulator should not retain per-viewer event buffers; it publishes `TickPayload`s, and each viewer decides
 how much history to keep.
 
 ## Simulator inputs (one-way flow preserved)
@@ -252,13 +251,22 @@ The simulation uses local LLM backends exclusively (no external APIs):
 
 We will write a run log as JSONL records. Two viable formats:
 
-1. **Frame log (simplest)**: store `TickFrame(state, events?)` per tick.
+1. **Payload log (simplest)**: store `TickPayload(state, events?)` per tick.
    - Pros: trivial to implement and replay; no reconstruction logic.
    - Cons: larger logs.
 
 2. **Event-sourced + occasional state**: store events every tick + store full `state` every N ticks.
    - Pros: smaller logs.
    - Cons: requires “load latest state, then replay events” logic.
+
+## Configuration (simulation constants)
+
+Some core constants should be configurable without changing code. We will keep them in a small config file loaded at startup (format can be JSON/TOML/YAML; the exact choice can be made during implementation).
+
+Baseline constants to include:
+
+- `tick_duration`: the fixed amount of simulated time represented by one tick (e.g., 1 minute). This should be a single constant used consistently across planning, scheduling, and world dynamics.
+- `travel_ticks_per_edge`: the time cost to traverse one edge in the world tree graph. Baseline value: `1`.
 
 ### Compaction / “forgetting” old events
 

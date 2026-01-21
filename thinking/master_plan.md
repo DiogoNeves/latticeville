@@ -46,7 +46,7 @@ Exit criteria:
 
 ## Phase 4 — Add a local LLM adapter (minimal)
 
-- Choose the simplest local backend to start (likely Ollama, unless vLLM is already set up locally).
+- Use the local vLLM backend (including vLLM Metal) behind a shallow adapter.
 - Add a **FakeLLM** first for deterministic tests, then the real adapter.
 - Use the LLM only to select among a small set of actions via the single required `act` tool call.
 
@@ -75,9 +75,9 @@ Exit criteria:
 
 - Reassess architecture and priorities based on what’s fun/useful:
   - richer viewer output
-  - better retrieval (embeddings)
+  - better retrieval (BM25 tuning, indexing, caching)
   - better plans/reactions
-  - location annotations and belief divergence rules
+  - belief divergence rules
 
 Exit criteria:
 - Updated plan with next milestones and any refactors.
