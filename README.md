@@ -8,6 +8,11 @@ A local-only simulation for studying multi-agent systems with memory. Implements
 
 Latticeville simulates LLM-driven characters in a tiny world with a focus on memory systems. Each agent follows a loop: perceive → remember → retrieve → act. The simulation runs entirely locally using terminal-based ASCII rendering.
 
+## Documentation
+
+- [Technical Specification](thinking/spec.md) — Detailed technical design and implementation details
+- [Architecture](thinking/architecture.md) — System architecture and design decisions
+
 ## Quickstart
 
 ```bash
