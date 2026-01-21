@@ -107,7 +107,9 @@ visible agents). The executor validates arguments against these sets and uses `N
  - The simulator applies a deterministic transition (object-specific rule/state machine) to update
    canonical state.
  - The simulator emits an `OBJECT_STATE_CHANGED(...)` event describing the transition.
- - Agents perceive updated object states in the next tick (step 1 of the loop).
+ - Other agents perceive updated object states in the next tick (step 1 of the loop).
+ - The acting agent is aware of its own action immediately (and writes it to memory), even though
+   environment perception remains tick-boundary consistent.
 
 ## Memory Stream
 
@@ -178,8 +180,11 @@ Select top-k memories that fit the context window.
 
 - When an agent decides to move (step 5/6 of the agent loop), it specifies a destination location (area or object) in the `MOVE` action.
 - Each location-to-location edge in the world tree has a fixed tick cost (`travel_ticks`). Total travel time is calculated by summing these costs along the path from current location to destination (graph-based distance, not geometric pathfinding). During travel, the agent is **in transit** and cannot interact or converse (prevents “talking before arrival”).
-- While in transit, the agent is not considered present in any area for perception/visibility purposes.
-- When `travel_ticks` reaches 0, the agent arrives: update `current_location` at the end of that tick and emit `MOVE(agent_id, from_location, to_location)`.
+- While in transit, the agent is considered present in intermediate travel locations for perception/visibility.
+  - Practically: compute a traversal path in the world tree and advance one edge per tick (`travel_ticks = 1`
+    per edge) so agents can perceive each other “on the way” and potentially re-plan.
+- When the traversal completes, update `current_location` at the end of that tick and emit
+  `MOVE(agent_id, from_location, to_location)`.
 - Note: this diverges from the paper, which computes walking paths in a rendered environment/game engine ([paper](https://arxiv.org/pdf/2304.03442)); we use graph-based distance calculation with fixed tick costs per edge instead.
 
 ## World transition model (ambient events)
@@ -203,10 +208,11 @@ and agents can only react by perceiving the resulting state/event stream in subs
 ## Rendering (terminal)
 
 - Multiple viewers can be attachable (e.g., one prints summary, one logs JSON, one draws ASCII).
-- Viewers are tick-synchronized: they see whole-tick snapshots/events only (no partial updates).
+- Viewers are tick-synchronized: they see whole-tick state (and optional events) only (no partial updates).
 - Any future simulator inputs (pause/step/commands) must enter as explicit simulator inputs,
   applied only at tick boundaries.
-- Replay is event-sourced with periodic snapshots (see [Architecture](thinking/architecture.md)).
+- Replay/logging may store full per-tick state frames (simplest) or events with occasional state (more compact)
+  (see [Architecture](thinking/architecture.md)).
 - A simple state debugger can be rendered as a separate viewer.
 
 # References

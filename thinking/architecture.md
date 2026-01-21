@@ -16,7 +16,7 @@ This document records the current architectural decisions for Latticeville, plus
 We will implement:
 
 - **In-process pub/sub**: simulator publishes a whole-tick payload at tick boundaries.
-- **Append-only JSONL run log**: simulator writes replay records to disk (events + periodic snapshots).
+- **Append-only JSONL run log**: simulator writes replay records to disk (frames; optional events).
 
 This yields fast iteration and keeps the schema stable while we discover what belongs in a tick.
 
@@ -80,7 +80,8 @@ When an agent acts on an object:
 - The LLM selects a structured `INTERACT` action (`object_id` + interaction verb).
 - The simulator applies a deterministic object transition (object-specific rule/state machine).
 - The canonical world state is updated with the new object state.
-- Agents perceive updated object states in the current tick (they are aware of their own actions).
+- The acting agent is aware of its own action immediately (and writes it to memory).
+- Other agents perceive updated object states on the next tick (tick boundary consistency).
 
 This separation ensures that state transitions are explicit and that perception always operates on stable, complete state snapshots.
 
@@ -99,44 +100,46 @@ This diverges from the Generative Agents paper, which computes walking paths in 
 
 Define a single “whole tick” payload that viewers consume:
 
-- **Snapshot**: the latest state needed to render/debug (canonical state + per-agent belief summaries).
-- **Events**: a list of semantic events that happened during the tick.
-  - **Agent action events** (canonical): `MOVE`, `INTERACT`, `SAY`, `WAIT/NOOP`, plus derived transitions like `OBJECT_STATE_CHANGED`.
-  - **World events** (canonical): e.g., `WEATHER_CHANGED`, `TIME_ADVANCED`.
-  - **Optional debug events** (non-canonical): e.g., reflection/plan summaries (these are also stored in agent memory streams).
+- **State**: the latest state needed to render/debug (canonical state + per-agent belief summaries).
+- **Events (optional)**: a small list of semantic events that happened during the tick.
+  - Events are convenient for debugging and compact logs, but **normal rendering can ignore them** and
+    just render `state`.
 
 Key properties:
 
 - **Immutability**: treat tick payloads as read-only data.
 - **Tick boundary**: a viewer receives payloads only after the simulator has fully applied the tick.
-- **Backpressure**: viewers are allowed to skip intermediate ticks and render only the latest state (configurable per viewer).
+- **Latest-frame semantics**: viewers are allowed to skip intermediate ticks and render only the latest
+  completed tick.
 
-### TickPayload
+### TickFrame
 
 - `tick`: integer tick id (monotonic within a run)
-- `snapshot`: optional snapshot of state at end of tick
-  - emitted periodically (e.g., every 50 ticks), and also at tick 0/start
-- `events`: list of events that occurred during the tick
+- `state`: state at end of tick (what we previously called a “snapshot”)
+- `events`: optional list of events that occurred during the tick
 
-### Why both snapshot + events?
+### Why both state + events?
 
-- Snapshots make it easy to render/debug the _current truth_.
-- Events make it easy to:
-  - animate or interpret changes (e.g., viewer chooses how to visualize `MOVE`)
-  - record compact replay logs
+- State makes it easy to render/debug the _current truth_.
+- Optional events make it easy to:
+  - interpret changes (e.g., viewer chooses how to visualize `MOVE`)
+  - build compact run logs (store events instead of full state each tick)
   - build audit trails and tests (“did we produce the expected event sequence?”)
 
-### Viewers: tick sync + backpressure behavior
+### Viewers: tick sync + buffering
 
 Viewers must only render at tick boundaries; they should never observe partially-applied state.
 
-We will implement backpressure as **per-viewer “latest tick” queues**:
+- **Default viewer model (double-buffering)**:
+  - `last_complete_tick`: the last fully-applied tick frame
+  - `currently_updating_tick`: a staging slot while ingesting a new tick frame
+  - render always uses `last_complete_tick`
 
-- Each viewer has a queue of size 1.
-- Publishing a tick overwrites any unconsumed tick for that viewer.
-- Effect: slow viewers drop intermediate ticks and always render the latest available completed tick.
+- **Dropping intermediate ticks is fine** for most viewers: they want “latest state” not “every frame”.
+- **Debug viewers** may retain the last \(k\) tick frames/events to render sequences or timelines.
 
-This keeps the simulator unblocked while still allowing “render every tick” viewers if they can keep up.
+The simulator should not retain per-viewer event buffers; it publishes `TickFrame`s, and each viewer decides
+how much history to keep.
 
 ## Simulator inputs (one-way flow preserved)
 
@@ -151,7 +154,7 @@ Below are options for how to connect simulator and viewers and how to store repl
 **Design**
 
 - Simulator calls subscribers each tick with `TickPayload(snapshot, events)`.
-- Separately, simulator appends tick payloads (or just events + periodic snapshots) to a **JSON Lines** file (`.jsonl`) for replay.
+- Separately, simulator appends tick frames (and optionally events) to a **JSON Lines** file (`.jsonl`) for replay/debugging.
 
 **Pros**
 
@@ -164,6 +167,8 @@ Below are options for how to connect simulator and viewers and how to store repl
 
 - Viewers must run in the same process (unless you add another transport later).
 - Long runs can produce large logs unless you store only events + periodic snapshots.
+  - With the `act` design, events are already structured; you can store only events for compactness, or store
+    full state frames for simplicity.
 
 **When to choose**
 
@@ -243,17 +248,17 @@ The simulation uses local LLM backends exclusively (no external APIs):
 
 ## Replay details (Option A implementation notes)
 
-### Log format: event-sourced with periodic snapshots
+### Log format options
 
-We will write a run log as JSONL records. Conceptually:
+We will write a run log as JSONL records. Two viable formats:
 
-- A **snapshot record** contains enough state to reconstruct the world/beliefs at a tick.
-- An **event record** contains changes that occurred since the last snapshot.
+1. **Frame log (simplest)**: store `TickFrame(state, events?)` per tick.
+   - Pros: trivial to implement and replay; no reconstruction logic.
+   - Cons: larger logs.
 
-New viewers (or a replay tool) can:
-
-1. Load the latest snapshot.
-2. Replay subsequent events to reach the current tick.
+2. **Event-sourced + occasional state**: store events every tick + store full `state` every N ticks.
+   - Pros: smaller logs.
+   - Cons: requires “load latest state, then replay events” logic.
 
 ### Compaction / “forgetting” old events
 

@@ -7,9 +7,9 @@ This plan is optimized for **early end-to-end validation**: each milestone is a 
 - Define the **core data structures** (shape only):
   - canonical world state (location/object tree + agents)
   - per-agent belief state (same schema, partial/stale allowed)
-  - tick payload for viewers (events every tick + periodic snapshots)
+  - tick frame for viewers (state every tick + optional events)
 - Decide the initial **sim→viewer communication** approach (decision: in-process pub/sub + JSONL replay log).
-- Decide snapshot cadence and log segmentation/rotation strategy.
+- Decide run log format (frame log vs event-sourced + occasional state).
 
 Exit criteria:
 - One document (and/or module stubs) describes the tick payload schema clearly.
@@ -19,7 +19,7 @@ Exit criteria:
 - Implement a terminal debug viewer that prints:
   - current tick
   - agent locations
-  - last N events
+  - optionally the last N events (or derive diffs from the last N state frames)
   - optionally a compact view of one agent’s belief state
 
 Exit criteria:
@@ -39,7 +39,7 @@ Exit criteria:
 
 - Connect simulator output to one or more viewers.
 - Ensure tick synchronization (no partial updates).
-- Add replay logging (JSONL event log + periodic snapshots, segmented/rotated as needed).
+- Add replay logging (JSONL frame log, or event-sourced log with occasional state).
 
 Exit criteria:
 - Can run a simulation and replay from the log to reproduce the same viewer outputs.
@@ -48,7 +48,7 @@ Exit criteria:
 
 - Choose the simplest local backend to start (likely Ollama, unless vLLM is already set up locally).
 - Add a **FakeLLM** first for deterministic tests, then the real adapter.
-- Use the LLM only to select among a small set of actions (keep parsing simple).
+- Use the LLM only to select among a small set of actions via the single required `act` tool call.
 
 Exit criteria:
 - Swap between FakeLLM and real local LLM via configuration.
