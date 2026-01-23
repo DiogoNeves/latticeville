@@ -2,8 +2,6 @@
 
 A local-only simulation for studying multi-agent systems with memory. Implements a memory-first agent loop inspired by the [Generative Agents paper](https://arxiv.org/abs/2304.03442), focusing on how agents perceive, remember, retrieve, and act in a small world.
 
-**Status:** Early development — core simulation loop in progress.
-
 ## Project approach (spec-first)
 
 This project is being developed **spec-first**: I’m actively working on the written spec, and I’m treating it as the source of truth for how the system should behave when complete.
