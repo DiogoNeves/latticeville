@@ -1,4 +1,4 @@
-# Latticeville — Project + Technical Spec
+# Latticeville - Project + Technical Spec
 
 # Summary
 

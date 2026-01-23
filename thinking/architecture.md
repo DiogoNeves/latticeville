@@ -148,7 +148,7 @@ If/when we need inputs (pause, step, commands), they should enter as an explicit
 
 Below are options for how to connect simulator and viewers and how to store replay data. These can be mixed (e.g., in-process delivery + file logging).
 
-### Option A — In-process pub/sub + JSONL replay log (recommended for v1)
+### Option A: In-process pub/sub + JSONL replay log (recommended for v1)
 
 **Design**
 
@@ -173,7 +173,7 @@ Below are options for how to connect simulator and viewers and how to store repl
 
 - Early development / E2E walking skeleton.
 
-### Option B — Append-only event log as the “bus” (file tailing)
+### Option B: Append-only event log as the “bus” (file tailing)
 
 **Design**
 
@@ -196,7 +196,7 @@ Below are options for how to connect simulator and viewers and how to store repl
 
 - When you want multi-process viewers or long-lived “watchers” without embedding everything into one process.
 
-### Option C — Queryable store for replay and memory (future)
+### Option C: Queryable store for replay and memory (future)
 
 **Design**
 
