@@ -1,4 +1,4 @@
-# Generative Agents (UIST 2023) — Focus on Simulation + Memory
+# Generative Agents (UIST 2023) - Focus on Simulation + Memory
 
 Source: https://arxiv.org/pdf/2304.03442
 

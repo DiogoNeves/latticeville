@@ -92,9 +92,9 @@ latticeville/
 ## Testing Guidelines
 
 - Use `pytest` with tests in `tests/` and names like `test_*.py`.
-- This is an experimental project—focus on validation of output and states rather than extensive test coverage.
+- This is an experimental project, so focus on validation of output and states rather than extensive test coverage.
 - Prioritize proving the system works as expected (e.g., agent behavior matches paper concepts).
-- Reference the [Generative Agents paper](https://arxiv.org/abs/2304.03442) when validating behavior, but this isn't a research project—practical validation over scientific rigor.
+- Reference the [Generative Agents paper](https://arxiv.org/abs/2304.03442) when validating behavior, but this isn't a research project; practical validation over scientific rigor.
 - Focus on deterministic unit tests for the discrete step engine and world model.
 - For rendering, include snapshot-style tests using ASCII fixtures when possible.
 
@@ -117,7 +117,7 @@ latticeville/
 - For UI changes, include example CLI output
 - All tests and lint checks must pass
 - Keep PRs focused on a single feature or fix
-- This is a personal project open to the public—no formal review process required
+- This is a personal project open to the public; no formal review process required
 
 ## Security & Permissions
 
@@ -160,7 +160,7 @@ latticeville/
 
 - **Run logs:** Stored in `data/` directory (gitignored). Ensure the directory is writable before starting a run.
 - **LLM Configuration:** All LLM backends configured via environment variables. No hardcoded endpoints.
-- **Rendering:** Keep renderer interfaces narrow—sim engine must remain UI-agnostic.
+- **Rendering:** Keep renderer interfaces narrow; the sim engine must remain UI-agnostic.
 - **Memory Stream:** Append-only design. Retrieval uses scoring (recency + relevance + importance).
 
 ## When Stuck / Escalation
