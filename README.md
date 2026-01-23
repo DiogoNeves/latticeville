@@ -47,4 +47,4 @@ uv run ruff format . # Format
 
 ## License
 
-Open source — see [LICENSE](LICENSE) file.
+Open source, see [LICENSE](LICENSE) file.
