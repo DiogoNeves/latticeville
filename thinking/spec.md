@@ -44,7 +44,8 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 - Each agent maintains a **personal subtree / belief view** for locations and objects it knows.
 - Agent belief views may diverge temporarily from the canonical world state (stale/partial), but follow the same structural schema (tree of nodes + containment).
 - Perception uses the current area node and the **object leaf nodes** contained in that area.
-- State transitions are deterministic given actions (non-determinism comes from LLM action generation).
+- State transitions are deterministic given actions and the same initial state (non-determinism comes from LLM action generation).
+  - Deterministic does **not** imply “physically accurate” under conflicting same-tick actions; it only implies reproducible outcomes.
 
 ## Core Agent Loop (per tick)
 
@@ -120,7 +121,8 @@ The executor validates arguments against these sets and uses `IDLE` on invalid i
 
 **Note:** The current design can lead to a race condition, whereby two agents interact with the same object, in the same tick, in a way that would be invalid.
 For example, if there is a single item on the fridge, but two agents take a single item each.
-We are going to ignore this problem and allow the simulation to continue, with an empty fridge in the example above.
+We are going to **ignore this problem and allow the simulation to continue**, with an empty fridge in the example above.
+This preserves determinism (same inputs → same results), but can yield an inaccurate/implausible outcome (e.g., “two successful takes from one item”).
 
 ## Memory Stream
 
@@ -142,7 +144,7 @@ Observations are direct perceptions recorded each tick. Agents perceive their lo
 - **Other agents' actions**: "Maria Lopez is studying for a Chemistry test while drinking coffee"
   - Only agents within visual range (same area) are observed. Each agent sees what other agents in their area are doing.
 - **Object states**: "The refrigerator is empty", "The stove is burning"
-  - Objects in the agent's current area and immediate subareas are perceived.
+  - Objects in the agent's current area are perceived.
 - **Inter-agent interactions**: "Isabella Rodriguez and Maria Lopez are conversing about planning a Valentine's day party"
   - When agents engage in dialogue, both participants (and any observers in the same area) record the conversation as an observation.
   - Dialogue initiation is perceived: "John is initiating a conversation with Eddy".
@@ -153,7 +155,13 @@ Agents only perceive what exists in their current location. They cannot observe 
 
 ### Retrieval Scoring
 
-Score = recency + relevance + importance, normalized to [0, 1].
+We use min–max normalization per retrieval call, then sum the components:
+
+- Compute raw component scores for each candidate memory \(m\): `recency_raw(m)`, `relevance_raw(m)`, `importance_raw(m)`.
+- Min–max normalize each component across all candidates in the stream for that call:
+  - `norm(x) = (x - min_x) / (max_x - min_x)`; if `max_x == min_x`, treat `norm(x) = 0`.
+- Final score (equal weights by default):
+  - `score(m) = recency_norm(m) + relevance_norm(m) + importance_norm(m)`
 
 - **Recency** decays exponentially since last access.
 - **Relevance** uses BM25 over the memory `description` field.
@@ -206,14 +214,10 @@ In addition to agent actions, the simulator may apply world-level transitions ea
 weather, ambient object changes). These are deterministic given the run seed/config and are emitted as
 events (e.g., `WEATHER_CHANGED`, `TIME_ADVANCED`). Agents perceive these changes in the next tick.
 
-This is a separate “world dynamics” step that can grow over time:
+This is a separate “world dynamics” step:
 
 - **Weather system**: e.g., `weather_state` transitions (`CLEAR` → `RAIN` → `CLEAR`), wind, temperature
   bands. Emits `WEATHER_CHANGED(old, new)`.
-- **Village maintenance / services** (future): e.g., scheduled repairs, trash collection, power outages,
-  shop opening/closing, restocking. Emits events like `MAINTENANCE_STARTED`, `MAINTENANCE_COMPLETED`,
-  `SERVICE_OUTAGE`, `RESTOCKED`.
-- **Scheduled world events** (future): festivals, alerts, NPC deliveries, ambient announcements.
 
 The world model should remain simulator-owned (not agent-owned): it updates canonical state and emits events,
 and agents can only react by perceiving the resulting state/event stream in subsequent ticks.
