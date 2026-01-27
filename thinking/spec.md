@@ -155,6 +155,8 @@ Agents only perceive what exists in their current location. They cannot observe 
 
 ### Retrieval Scoring
 
+Retrieval is performed by providing a natural-language **query memory** that represents the agent's current situation or question (e.g., current observations + current plan step / goal), then ranking the memory stream against that query memory and selecting the top-k entries for context.
+
 We use min–max normalization per retrieval call, then sum the components:
 
 - Compute raw component scores for each candidate memory \(m\): `recency_raw(m)`, `relevance_raw(m)`, `importance_raw(m)`.
@@ -164,7 +166,7 @@ We use min–max normalization per retrieval call, then sum the components:
   - `score(m) = recency_norm(m) + relevance_norm(m) + importance_norm(m)`
 
 - **Recency** decays exponentially since last access.
-- **Relevance** uses BM25 over the memory `description` field.
+- **Relevance** uses embedding cosine similarity between the query memory text and each memory `description`.
 - **Importance** assigned at creation time by asking the LLM.
 
 Select top-k memories that fit the context window. `k` should be configurable.
