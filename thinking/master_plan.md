@@ -1,84 +1,179 @@
-# Master plan (draft)
+# Master plan
 
-This plan is optimized for **early end-to-end validation**: each milestone is a “thin slice” that keeps components simple but proves the interfaces.
+This plan is optimized for **early end-to-end validation**: each phase is a “thin slice” that keeps components minimal but proves the interfaces end-to-end.
 
-## Phase 0: Agree on contracts (shape first)
+**Important**: This is a **living document**. If you get stuck on a phase or find that the plan doesn’t match reality, **re-evaluate and adjust**. Getting stuck is a signal that the plan needs updating—don’t force-fit implementation to match an outdated plan.
 
-- Define the **core data structures** (shape only):
-  - canonical world state (location/object tree + agents)
-  - per-agent belief state (same schema, partial/stale allowed)
-  - tick frame for viewers (state every tick + optional events)
-- Decide the initial **sim→viewer communication** approach (decision: in-process pub/sub + JSONL replay log).
-- Decide run log format (frame log vs event-sourced + occasional state).
+## Working with AI (recommended workflow)
+
+Keep the feedback loop tight and the diffs small:
+
+- **Small diffs**: prefer changes you can review in <10 minutes; avoid “big bang” refactors.
+- **Acceptance criteria first**: before implementing, write down what “done” means (commands that pass + observable output).
+- **Tiny eval loop** (run constantly):
+
+```bash
+uv run ruff format .
+uv run ruff check .
+uv run pytest
+```
+
+- **Use fakes to stay deterministic**: default to `FakeLLM` / fake embedder in tests, then swap in real backends behind the same interface.
+- **Contracts over cleverness**: when uncertain, add a schema/validator + a test rather than expanding behavior.
+
+## What’s already decided (current contracts)
+
+These decisions are now encoded in `thinking/spec.md` and `thinking/architecture.md` and should be treated as the baseline:
+
+- **Determinism + tick boundaries**:
+  - Agents perceive world state as it existed **at the end of the previous tick**.
+  - Canonical state updates are applied **at the end of the tick**.
+  - “Deterministic” means reproducible outcomes, not necessarily physically accurate outcomes under conflicts.
+- **Same-tick conflicts are tolerated**: if two agents perform conflicting object interactions in the same tick, the sim continues deterministically even if the outcome is implausible.
+- **Action model (LLM tool calling)**:
+  - Exactly **one** structured action per agent per tick.
+  - `IDLE` is always allowed; invalid actions/args fall back to `IDLE`.
+  - Action kinds: `IDLE` | `MOVE` | `INTERACT` | `SAY`.
+- **Movement semantics**:
+  - Movement is graph traversal with fixed per-edge tick cost (baseline 1 tick/edge).
+  - While in transit, agents **occupy intermediate locations** for perception/visibility and can re-plan “on the way”.
+- **Memory retrieval scoring**:
+  - Retrieval uses a natural-language “query memory” (current observations + current plan step/goal).
+  - Relevance is **embedding cosine similarity**; score uses per-call min–max normalization of recency/relevance/importance.
+- **Sim → viewer contract**:
+  - Viewers receive whole-tick payloads only (no partial state).
+  - Viewers may drop intermediate ticks and render only the latest completed tick (**latest-frame semantics**).
+- **Local LLM backend direction**:
+  - Primary backend target: **Qwen3 via vLLM Metal**, behind a shallow adapter.
+  - Batch agent requests where possible (implementation detail to be proven).
+
+## Phase 0: Lock the contracts into code (schemas + stubs)
+
+- Define the **core data structures** in code (shape-first):
+  - canonical world tree (areas/objects/agents)
+  - per-agent belief tree (same schema, partial/stale allowed)
+  - `TickPayload` for viewers: `{ tick, state, events? }`
+  - `Action` schema + validation + `IDLE` fallback
+- Add minimal module scaffolding aligned to the architecture doc:
+  - `latticeville/sim/`, `latticeville/render/`, `latticeville/db/`, `latticeville/llm/`
+- Add **contract tests** for the schemas/validators (no simulation behavior yet).
 
 Exit criteria:
-- One document (and/or module stubs) describes the tick payload schema clearly.
+- The codebase has importable types + validation stubs that match the docs (even if behavior is fake).
 
-## Phase 1: Debug viewer (terminal, minimal)
+Acceptance checklist:
+- `uv run ruff check .` passes
+- `uv run pytest` passes (schema/validator contract tests)
 
-- Implement a terminal debug viewer that prints:
-  - current tick
-  - agent locations
-  - optionally the last N events (or derive diffs from the last N state frames)
-  - optionally a compact view of one agent’s belief state
+## Phase 1: Minimal simulator loop (no LLM, deterministic)
 
-Exit criteria:
-- Viewer can consume a tick payload and render a stable textual output.
-
-## Phase 2: Simulator loop (no LLM)
-
-- Implement a simple tick loop that:
+- Implement a basic tick loop that:
   - advances time
-  - applies deterministic, hardcoded state changes (including at least one movement event)
-  - emits a tick payload each tick
+  - runs world dynamics (optional but deterministic)
+  - runs agent updates from a fixed snapshot (end-of-previous-tick)
+  - applies all state updates at tick end
+  - emits `TickPayload` per tick (state + optional events)
+- Implement deterministic movement on a tiny graph:
+  - multi-tick travel
+  - intermediate occupancy for perception/visibility
 
 Exit criteria:
-- Running the app produces a sequence of ticks with events and changing state.
+- Running the app produces a changing world over ticks and emits stable tick payloads.
 
-## Phase 3: Wire simulator to viewer (chosen comms)
+Acceptance checklist:
+- `uv run pytest` includes deterministic tick-loop tests (fixed seed/config)
+- A short run prints/emits multiple ticks and shows movement over time
 
-- Connect simulator output to one or more viewers.
-- Ensure tick synchronization (no partial updates).
-- Add replay logging (JSONL frame log, or event-sourced log with occasional state).
+## Phase 2: Terminal debug viewer (minimal but stable)
 
-Exit criteria:
-- Can run a simulation and replay from the log to reproduce the same viewer outputs.
-
-## Phase 4: Add a local LLM adapter (minimal)
-
-- Use the local vLLM backend (including vLLM Metal) behind a shallow adapter.
-- Add a **FakeLLM** first for deterministic tests, then the real adapter.
-- Use the LLM only to select among a small set of actions via the single required `act` tool call.
-
-Exit criteria:
-- Swap between FakeLLM and real local LLM via configuration.
-
-## Phase 5: Implement memory + retrieval (v1)
-
-- Append observations/actions to memory stream.
-- Retrieval scoring starts minimal (keyword overlap + recency + importance heuristic).
-- Persist memory in-memory initially; add optional persistence later.
+- Implement a terminal viewer that renders from `TickPayload`:
+  - current tick
+  - agent locations (including “in transit” / current node)
+  - last \(k\) events (optional)
+  - compact view of one agent’s belief or memory summary (optional)
+- Ensure viewer obeys:
+  - tick boundary rendering only
+  - latest-frame semantics (can skip ticks)
 
 Exit criteria:
-- An agent’s action each tick incorporates retrieved memories in a measurable way.
+- Viewer consumes tick payloads and renders stable output across runs.
 
-## Phase 6: Reflections + planning (incremental)
+Acceptance checklist:
+- Viewer renders from a saved `TickPayload` fixture (snapshot-style test or golden text)
+- Viewer can skip ticks and still render the latest completed tick correctly
 
-- Implement reflection triggers (importance threshold).
-- Generate 1–3 insights with links to supporting memories.
-- Introduce a minimal plan representation (single-step intentions first, expand later).
+## Phase 3: Replay logging (JSONL) + deterministic replay
 
-Exit criteria:
-- Reflections appear occasionally and influence subsequent behavior.
-
-## Phase 7: Re-plan
-
-- Reassess architecture and priorities based on what’s fun/useful:
-  - richer viewer output
-  - better retrieval (BM25 tuning, indexing, caching)
-  - better plans/reactions
-  - belief divergence rules
+- Persist a run log (baseline: JSONL tick frames; optionally include events).
+  - Include a `schema_version` field in replay records (and/or an initial run header record) so logs remain parseable as schemas evolve.
+- Implement replay mode that:
+  - reads the log
+  - replays tick payloads through the same viewer pipeline
 
 Exit criteria:
-- Updated plan with next milestones and any refactors.
+- A run can be replayed from disk and reproduces the same viewer outputs.
+
+Acceptance checklist:
+- A recorded run (JSONL) can be replayed and matches a baseline output (golden file or snapshot)
+
+## Phase 4: LLM integration (FakeLLM first, then vLLM Metal)
+
+- Add a deterministic `FakeLLM` that outputs structured actions for tests/demos.
+- Add a shallow adapter for the real local backend:
+  - target: Qwen3 via vLLM Metal
+  - enforce “one tool call per tick” and `IDLE` fallback
+- (If feasible) batch multiple agent requests per tick.
+
+Exit criteria:
+- Swap between `FakeLLM` and the real adapter via configuration.
+
+Acceptance checklist:
+- With `FakeLLM`, tests are deterministic and cover action selection + validation + `IDLE` fallback
+- With real backend configured, a short run completes without violating “one action per tick”
+
+## Phase 5: Memory stream + retrieval (embedding-based)
+
+- Implement append-only memory stream:
+  - record observations/actions/plans/reflections as `description` + metadata
+  - compute importance (LLM-rated 1–10, normalized for scoring)
+- Implement retrieval:
+  - create query memory text from the current situation
+  - compute relevance via **embedding cosine similarity**
+  - implement min–max normalization per retrieval call and top-k selection
+- Provide a deterministic “fake embedder” for tests; wire a real local embedder later.
+
+Exit criteria:
+- Agent behavior measurably incorporates retrieved memories (and is testable with fake components).
+
+Acceptance checklist:
+- Retrieval has unit tests for: scoring components, per-call min–max normalization edge cases, top-k selection
+- With fake embedder, retrieval returns expected memories deterministically
+
+## Phase 6: Planning + reflection (paper-inspired, incremental)
+
+- Planning:
+  - daily plan in broad strokes (5–8 chunks)
+  - recursive decomposition to hour chunks and 5–15 minute actions
+  - re-plan from current point when reacting
+- Reflection:
+  - trigger when cumulative importance since last reflection exceeds threshold
+  - generate 3–5 insights and link to supporting memories
+
+Exit criteria:
+- Reflections and plans appear occasionally and influence subsequent behavior in visible ways.
+
+Acceptance checklist:
+- Planning produces 5–8 chunk day plans and decomposes to finer steps (unit-tested)
+- Reflection triggers on threshold and creates linked reflections (unit-tested)
+
+## Phase 7: Re-plan (once the thin slice is fun)
+
+- Reassess priorities based on what’s useful/fun:
+  - richer viewer output (timelines, map, belief diffs)
+  - improved retrieval performance (indexing, caching)
+  - better reactions and social dynamics
+  - belief divergence rules and debugging tools
+
+Exit criteria:
+- Updated plan with next milestones and any refactors based on real usage.
 

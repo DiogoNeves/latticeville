@@ -43,6 +43,7 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 - Agents live in the tree as leaf nodes with a current location (parent).
 - Each agent maintains a **personal subtree / belief view** for locations and objects it knows.
 - Agent belief views may diverge temporarily from the canonical world state (stale/partial), but follow the same structural schema (tree of nodes + containment).
+  - Belief updates from perception are a **merge**: newly perceived nodes are merged into belief; for nodes present in both (same `id`), perceived/canonical fields **override** belief fields.
 - Perception uses the current area node and the **object leaf nodes** contained in that area.
 - State transitions are deterministic given actions and the same initial state (non-determinism comes from LLM action generation).
   - Deterministic does **not** imply “physically accurate” under conflicting same-tick actions; it only implies reproducible outcomes.
@@ -228,11 +229,21 @@ and agents can only react by perceiving the resulting state/event stream in subs
 
 - Multiple viewers can be attachable (e.g., one prints summary, one logs JSON, one draws ASCII).
 - Viewers are tick-synchronized: they see whole-tick state (and optional events) only (no partial updates).
+- Viewers may drop intermediate ticks (e.g., if render cadence is slower than simulation), but must always render the most recent **complete** tick available at render time.
 - Any future simulator inputs (pause/step/commands) must enter as explicit simulator inputs,
   applied only at tick boundaries.
-- Replay/logging may store full per-tick state frames (simplest) or events with occasional state (more compact)
-  (see [Architecture](thinking/architecture.md)).
+- Replay/logging stores full per-tick state snapshots (see [Architecture](thinking/architecture.md)).
 - A simple state debugger can be rendered as a separate viewer.
+
+### Sim → viewer tick payload
+
+Viewers consume an immutable per-tick payload:
+
+- `tick`: integer tick id (monotonic within a run)
+- `state`: full snapshot of state at end of tick (canonical world + per-agent belief state as needed)
+- `events`: optional list of semantic events that occurred during the tick
+
+Replay logs are append-only JSONL records of these tick payloads and include a `schema_version` to detect mismatches. There are **no backwards-compatibility guarantees** across schema versions.
 
 ## Tick time model
 

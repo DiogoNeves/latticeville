@@ -35,6 +35,14 @@ Each node has: `id`, `name`, `type` (`area`, `object`, `agent`), `parent_id`, an
 
 Each agent maintains a belief view using the **same tree schema**, but it may be **partial and/or stale** relative to the canonical world. This supports “I haven’t perceived the change yet” without inventing a second model.
 
+#### Belief update rule (v0)
+
+Belief is updated from perception via a **merge** into the agent’s belief tree:
+
+- **Merge strategy**: merge newly perceived nodes into belief; if a node exists in both belief and perceived data (same `id`), the **perceived/canonical fields override** the belief fields for that node.
+- **Scope**: the perceived slice is typically the agent’s current area and its immediate contents (objects + agents in that area).
+- **Not globally synced**: belief outside the perceived slice remains as-is (and may be stale).
+
 ### Location annotations
 
 We do not model a separate “annotation” concept. Subjective, place-related notes are ordinary observations recorded in the memory stream.
@@ -179,7 +187,7 @@ We **ignore this problem and allow the simulation to continue**. This preserves 
 
 Define a single “whole tick” payload that viewers consume:
 
-- **State**: the latest state needed to render/debug (canonical state + per-agent belief summaries).
+- **State**: the latest state needed to render/debug (canonical state + per-agent belief state).
 - **Events (optional)**: a small list of semantic events that happened during the tick.
   - Events are convenient for debugging and compact logs, but normal rendering can ignore them and just render `state`.
 
@@ -192,7 +200,7 @@ Key properties:
 ### TickPayload
 
 - `tick`: integer tick id (monotonic within a run)
-- `state`: state at end of tick
+- `state`: **full snapshot** of state at end of tick (keep it simple; no diffing required)
 - `events`: optional list of events that occurred during the tick
 
 ### Viewers: tick sync + buffering
@@ -204,7 +212,9 @@ Viewers must only render at tick boundaries; they should never observe partially
   - `currently_updating_tick`: a staging slot while ingesting a new tick frame
   - render always uses `last_complete_tick`
 
-- Dropping intermediate ticks is fine for most viewers (latest-frame semantics).
+- Dropping intermediate ticks is fine for most viewers (latest-frame semantics). In practice:
+  - if multiple `TickPayload`s arrive between render steps, keep only the newest tick and discard older ones
+  - render should always show the most recent **complete** tick payload available at that render step
 - Debug viewers may retain the last \(k\) tick frames/events to render sequences or timelines.
 
 The simulator should not retain per-viewer event buffers; it publishes `TickPayload`s, and each viewer decides how much history to keep.
@@ -248,10 +258,15 @@ Below are options for how to connect simulator and viewers and how to store repl
 
 ### Log format options
 
-Two viable JSONL formats:
+We use a **payload log** format:
 
-1. **Payload log (simplest)**: store `TickPayload(state, events?)` per tick.
-2. **Event-sourced + occasional state**: store events every tick + store full `state` every N ticks.
+1. **Payload log (simplest)**: store `TickPayload(state, events?)` per tick, where `state` is a full snapshot.
+
+#### Schema versioning
+
+Include a `schema_version` field in each replay record (and/or in an initial run header record) to detect mismatches as schemas evolve.
+
+We make **no backwards-compatibility guarantees** for replay logs: readers/viewers are expected to match the log schema version they are consuming.
 
 ## LLM backend
 
@@ -279,10 +294,3 @@ If we want to “forget” older events for efficiency, we do it by **starting a
 - rotate every N ticks or bytes into `segment-001.jsonl` (starts with snapshot, then events)
 
 Old segments can optionally be deleted or compressed. This avoids rewriting large files while keeping replay fast.
-
-## Open questions
-
-- **Tick payload schema**: how much canonical world state vs per-agent belief detail should be included each tick?
-- **Replay compatibility**: how do we version tick logs as schemas evolve?
-- **Belief divergence**: what are the explicit rules for how and when belief state updates from perception?
-- **Rendering cadence**: should viewers get every tick but be allowed to drop, or should the simulator emit every N ticks?
