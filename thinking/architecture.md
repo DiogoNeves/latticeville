@@ -276,6 +276,7 @@ The simulation uses local LLM backends exclusively (no external APIs):
 - **Batching**: Multiple agent requests are batched wherever possible (see [vLLM docs](https://docs.vllm.ai/en/latest/)). This requires experimentation but we are likely going to process multiple agents at the same time.
 - **Prompts**: should be short and deterministic where possible.
 - **Testing**: use a `FakeLLM` for deterministic tests and fixed seeds.
+- **Direct offline API learnings**: see [vLLM Metal: Direct offline API learnings](/thinking/vllm_metal_smoke.md).
 
 ## Configuration (simulation constants)
 

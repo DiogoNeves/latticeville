@@ -16,6 +16,8 @@ This folder contains design and planning documents for Latticeville.
   - Post-baseline experiment ideas and evaluation notes.
 - **Paper grounding (reference only):** [PAPER SUMMARY](/thinking/paper/summary.md)
   - A summary of the _Generative Agents_ paper. It describes the paper, not this project.
+- **Local LLM learnings:** [vLLM Metal: Direct offline API learnings](/thinking/vllm_metal_smoke.md)
+  - What we learned about direct (no-server) LLM + embeddings APIs.
 
 ## Terminology (quick glossary)
 
