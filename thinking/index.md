@@ -10,8 +10,6 @@ This folder contains design and planning documents for Latticeville.
 - **Then:** [ARCHITECTURE](/thinking/architecture.md)
   - The key architectural decisions (and options we considered), with rationale.
   - This is where cross-cutting “contracts” live (tick semantics, sim→viewer payload, replay).
-- **Then (implementation order):** [MASTER_PLAN](/thinking/master_plan.md)
-  - A milestone plan optimized for early end-to-end validation.
 - **Finally (after baseline works):** [RESEARCH](/thinking/research.md)
   - Post-baseline experiment ideas and evaluation notes.
 - **Paper grounding (reference only):** [PAPER SUMMARY](/thinking/paper/summary.md)

@@ -16,6 +16,6 @@ When editing `thinking/spec.md`:
   - "optional for v1"
   - Similar versioning qualifiers
 - Write the spec as if describing the complete, final system.
-- Implementation strategy and phasing should be tracked elsewhere (e.g., `thinking/master_plan.md` or issue tracking), not in the spec.
+- Implementation strategy and phasing should be tracked elsewhere (e.g., issue tracking), not in the spec.
 
 The spec is a vision document, not an implementation roadmap.

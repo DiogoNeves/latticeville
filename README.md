@@ -25,7 +25,7 @@ The simulator also supports a separate **world dynamics** step (e.g., weather/ti
 
 Quick excerpt from the index:
 
-> Start here: `thinking/spec.md` (final intended outcome) → then `thinking/architecture.md` (contracts/rationale) → then `thinking/master_plan.md` (implementation order).
+> Start here: `thinking/spec.md` (final intended outcome) → then `thinking/architecture.md` (contracts/rationale).
 
 ## Quickstart
 
