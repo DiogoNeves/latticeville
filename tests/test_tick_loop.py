@@ -19,12 +19,12 @@ def test_intermediate_occupancy_and_event() -> None:
     first_events = [
         event
         for event in (payloads[0].events or [])
-        if event.payload.get("agent_id") == "ada"
+        if event.kind == "MOVE" and event.payload.get("agent_id") == "ada"
     ]
     second_events = [
         event
         for event in (payloads[1].events or [])
-        if event.payload.get("agent_id") == "ada"
+        if event.kind == "MOVE" and event.payload.get("agent_id") == "ada"
     ]
 
     assert len(first_events) == 0

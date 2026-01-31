@@ -52,6 +52,16 @@ def main() -> None:
         help="Model ID for mlx backend (simulation mode only).",
     )
     parser.add_argument(
+        "--embedder",
+        default=None,
+        help="Embedder backend to use: fake or qwen (simulation mode only).",
+    )
+    parser.add_argument(
+        "--embed-model-id",
+        default=None,
+        help="Model ID for qwen embedder (simulation mode only).",
+    )
+    parser.add_argument(
         "--ticks",
         type=int,
         default=10,
@@ -80,6 +90,8 @@ def main() -> None:
         ticks=args.ticks,
         llm_backend=args.llm,
         model_id=args.model_id,
+        embedder_backend=args.embedder,
+        embedder_model_id=args.embed_model_id,
     )
     print(f"Run saved to {created_run}")
 

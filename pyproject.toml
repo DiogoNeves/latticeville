@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.12.5",
   "rich",
+  "torch>=2.10.0",
   "vllm-mlx>=0.2.1",
 ]
 
