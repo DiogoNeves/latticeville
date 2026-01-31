@@ -208,6 +208,7 @@ Key properties:
 Viewers must only render at tick boundaries; they should never observe partially-applied state.
 
 - **Default viewer model (double-buffering)**:
+
   - `last_complete_tick`: the last fully-applied tick frame
   - `currently_updating_tick`: a staging slot while ingesting a new tick frame
   - render always uses `last_complete_tick`

@@ -16,6 +16,7 @@ This document captures how to run LLM generation and embeddings **directly** (no
 **Both APIs work directly in Python - no HTTP server needed.**
 
 For **LLM generation** (Metal GPU):
+
 - Use `mlx-lm` directly (comes with `vllm-mlx` package).
 - API: `from mlx_lm import load, generate`
 - Example:
@@ -26,6 +27,7 @@ For **LLM generation** (Metal GPU):
 - Works offline, in-process, Metal GPU accelerated.
 
 For **embeddings** (CPU):
+
 - Use standard `vllm` with `runner="pooling"`.
 - API: `from vllm import LLM`
 - Note: API changed from `task="embed"` (older docs) to `runner="pooling"` (v0.14+).
@@ -55,16 +57,19 @@ python -m venv .venv
 ```
 
 Why both:
+
 - `vllm-mlx`: Provides `mlx-lm` for Metal-accelerated LLM generation.
 - `vllm`: Provides offline pooling API for embeddings.
 
 ## Model compatibility
 
 **LLM models (mlx-lm):**
+
 - Works with MLX quantized models from `mlx-community/` (e.g., `Qwen3-0.6B-8bit`).
 - Models are downloaded from HuggingFace automatically.
 
 **Embedding models (vLLM pooling):**
+
 - Works with standard HuggingFace embedding models (e.g., `BAAI/bge-small-en-v1.5`).
 - Must be compatible with sentence-transformers format.
 - Models are downloaded from HuggingFace automatically.
@@ -72,10 +77,12 @@ Why both:
 ## Architecture decision
 
 **For Latticeville, use direct offline APIs:**
+
 - **LLM**: `mlx-lm` direct API (Metal GPU, offline, in-process).
 - **Embeddings**: Standard vLLM pooling API (CPU, offline, in-process).
 
 **Benefits:**
+
 - No HTTP server process to manage.
 - Everything runs in-process with the simulation.
 - Metal GPU acceleration for LLM generation.

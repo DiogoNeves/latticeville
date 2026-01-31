@@ -19,16 +19,19 @@ Latticeville is a local-only simulation for studying multi-agent systems with me
 ## Environment & Setup
 
 **Prerequisites:**
+
 - Python 3.12.9 (see `.python-version`)
 - `uv` package manager installed
 
 **Setup:**
+
 ```bash
 uv sync                    # Install dependencies
 uv run python -m latticeville  # Run simulation
 ```
 
 **Environment Variables:**
+
 - `OLLAMA_HOST` - Optional, defaults to localhost for Ollama LLM backend
 - LLM backends configured via environment variables (no credentials in repo)
 
@@ -55,6 +58,7 @@ latticeville/
 ```
 
 **Module Responsibilities:**
+
 - `latticeville/sim/` - World model and discrete time-step logic (testable, UI-agnostic)
 - `latticeville/render/` - Rich views and ASCII art rendering (stateless, accepts state)
 - `latticeville/db/` - Persistence helpers for memory streams and replay logs
@@ -63,15 +67,18 @@ latticeville/
 ## Build & Test Commands
 
 **Dependency Management:**
+
 - Use `uv` for all package operations: `uv sync`, `uv add <package>`
 - Add dev dependencies to `[dependency-groups.dev]` in `pyproject.toml`
 
 **Running:**
+
 - `uv run python -m latticeville` - Run the simulation loop
 - `uv run pytest` - Run all tests
 - `uv run pytest tests/path/to/test_file.py` - Run specific test file
 
 **Code Quality:**
+
 - `uv run ruff check .` - Lint code
 - `uv run ruff format .` - Format code
 - Both must pass before committing
@@ -108,11 +115,13 @@ latticeville/
 ## Commit & Pull Request Guidelines
 
 **Commit Messages:**
+
 - Short, sentence-case summaries (e.g., "Fix capitalization in project title")
 - One logical change per commit
 - Focused and descriptive
 
 **Pull Requests:**
+
 - Include short summary and rationale
 - For UI changes, include example CLI output
 - All tests and lint checks must pass
@@ -122,6 +131,7 @@ latticeville/
 ## Security & Permissions
 
 **AI Agents May:**
+
 - Read any file in the repository
 - Create/edit code files following conventions
 - Run linting and formatting tools
@@ -129,6 +139,7 @@ latticeville/
 - Add dependencies via `uv add` (but prefer asking for review)
 
 **AI Agents Must Request Approval For:**
+
 - Changing project metadata (`pyproject.toml` version, dependencies)
 - Modifying `.gitignore` or repository structure
 - Adding external API calls or networked dependencies
@@ -136,6 +147,7 @@ latticeville/
 - Committing directly to main branch (use PRs)
 
 **Never:**
+
 - Commit secrets, API keys, or credentials
 - Add telemetry or external tracking
 - Break the local-only principle
@@ -143,18 +155,20 @@ latticeville/
 ## Good & Bad Examples
 
 **✅ Good Patterns:**
+
 - Stateless renderers that accept world state
 - Deterministic simulation logic (testable)
 - Type hints on public APIs
 - Explicit file names: `time_step.py`, `world_state.py`
 
 **❌ Avoid:**
+
 - Tight coupling between sim and render modules
 - Stateful renderers that mutate world state
 - Networked dependencies or external APIs
 - Vague naming or abbreviations
 
-*Note: As the codebase grows, add specific file examples here.*
+_Note: As the codebase grows, add specific file examples here._
 
 ## Edge Cases & Gotchas
 
