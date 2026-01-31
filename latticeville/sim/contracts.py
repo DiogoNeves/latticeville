@@ -119,25 +119,13 @@ class Action(BaseModel):
     @model_validator(mode="after")
     def validate_action(self) -> "Action":
         if self.kind == ActionKind.MOVE:
-            if (
-                self.move is None
-                or self.interact is not None
-                or self.say is not None
-            ):
+            if self.move is None or self.interact is not None or self.say is not None:
                 raise ValueError("MOVE requires move args only")
         elif self.kind == ActionKind.INTERACT:
-            if (
-                self.interact is None
-                or self.move is not None
-                or self.say is not None
-            ):
+            if self.interact is None or self.move is not None or self.say is not None:
                 raise ValueError("INTERACT requires interact args only")
         elif self.kind == ActionKind.SAY:
-            if (
-                self.say is None
-                or self.move is not None
-                or self.interact is not None
-            ):
+            if self.say is None or self.move is not None or self.interact is not None:
                 raise ValueError("SAY requires say args only")
         else:
             if (
@@ -156,9 +144,7 @@ class ValidTargets:
     agents: set[str] = field(default_factory=set)
 
 
-def coerce_action(
-    raw: Any, valid_targets: ValidTargets | None = None
-) -> Action:
+def coerce_action(raw: Any, valid_targets: ValidTargets | None = None) -> Action:
     """Validate an action or fall back to IDLE."""
     try:
         action = Action.model_validate(raw)
@@ -181,10 +167,7 @@ def coerce_action(
         ):
             return Action(kind=ActionKind.IDLE)
     elif action.kind == ActionKind.SAY:
-        if (
-            action.say is None
-            or action.say.to_agent_id not in valid_targets.agents
-        ):
+        if action.say is None or action.say.to_agent_id not in valid_targets.agents:
             return Action(kind=ActionKind.IDLE)
 
     return action

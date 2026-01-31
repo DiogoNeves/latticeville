@@ -85,6 +85,12 @@ Acceptance checklist:
   - multi-tick travel
   - intermediate occupancy for perception/visibility
 
+Status: **complete**
+Notes:
+- Added minimal world state, movement traversal, patrol policy, and tick loop modules.
+- Wired app to run a short loop and print tick summaries.
+- Added deterministic tick loop tests.
+
 Exit criteria:
 
 - Running the app produces a changing world over ticks and emits stable tick payloads.
