@@ -58,6 +58,11 @@ These decisions are now encoded in `thinking/spec.md` and `thinking/architecture
   - `latticeville/sim/`, `latticeville/render/`, `latticeville/db/`, `latticeville/llm/`
 - Add **contract tests** for the schemas/validators (no simulation behavior yet).
 
+Status: **complete**
+Notes:
+- Implemented Pydantic contracts (`latticeville/sim/contracts.py`) and exports.
+- Added contract tests (`tests/test_contracts.py`) and a pytest path helper (`tests/conftest.py`).
+
 Exit criteria:
 - The codebase has importable types + validation stubs that match the docs (even if behavior is fake).
 
