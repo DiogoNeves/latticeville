@@ -37,6 +37,22 @@ uv sync
 uv run python -m latticeville
 ```
 
+## LLM Backends (local)
+
+Default backend is `fake` (deterministic). To use the real MLX model:
+
+```bash
+# Real MLX LLM (downloads model on first run)
+uv run python -m latticeville --llm mlx --model-id Qwen/Qwen3-4B-MLX-4bit
+```
+
+Environment alternatives:
+
+```bash
+LATTICEVILLE_LLM=mlx LATTICEVILLE_MODEL_ID=Qwen/Qwen3-4B-MLX-4bit \
+  uv run python -m latticeville
+```
+
 ## Development
 
 ```bash

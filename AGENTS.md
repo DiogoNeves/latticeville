@@ -33,6 +33,8 @@ uv run python -m latticeville  # Run simulation
 **Environment Variables:**
 
 - `OLLAMA_HOST` - Optional, defaults to localhost for Ollama LLM backend
+- `LATTICEVILLE_LLM` - LLM backend (`fake` or `mlx`)
+- `LATTICEVILLE_MODEL_ID` - Model ID for MLX backend (e.g., `Qwen/Qwen3-4B-MLX-4bit`)
 - LLM backends configured via environment variables (no credentials in repo)
 
 ## Project Structure & Module Organization
@@ -74,6 +76,7 @@ latticeville/
 **Running:**
 
 - `uv run python -m latticeville` - Run the simulation loop
+- `uv run python -m latticeville --llm mlx --model-id Qwen/Qwen3-4B-MLX-4bit` - Run with real MLX LLM
 - `uv run pytest` - Run all tests
 - `uv run pytest tests/path/to/test_file.py` - Run specific test file
 
