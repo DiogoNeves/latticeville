@@ -82,6 +82,7 @@ latticeville/
 - `uv run ruff check .` - Lint code
 - `uv run ruff format .` - Format code
 - Both must pass before committing
+- Always run format, lint, and tests as you go after substantive changes.
 
 ## Coding Style & Naming Conventions
 

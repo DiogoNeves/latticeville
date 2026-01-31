@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "AI Village Simulation named Latticeville"
 requires-python = ">=3.12"
 dependencies = [
+  "pydantic>=2.12.5",
   "rich",
 ]
 
