@@ -60,13 +60,16 @@ These decisions are now encoded in `thinking/spec.md` and `thinking/architecture
 
 Status: **complete**
 Notes:
+
 - Implemented Pydantic contracts (`latticeville/sim/contracts.py`) and exports.
 - Added contract tests (`tests/test_contracts.py`) and a pytest path helper (`tests/conftest.py`).
 
 Exit criteria:
+
 - The codebase has importable types + validation stubs that match the docs (even if behavior is fake).
 
 Acceptance checklist:
+
 - `uv run ruff check .` passes
 - `uv run pytest` passes (schema/validator contract tests)
 
@@ -83,9 +86,11 @@ Acceptance checklist:
   - intermediate occupancy for perception/visibility
 
 Exit criteria:
+
 - Running the app produces a changing world over ticks and emits stable tick payloads.
 
 Acceptance checklist:
+
 - `uv run pytest` includes deterministic tick-loop tests (fixed seed/config)
 - A short run prints/emits multiple ticks and shows movement over time
 
@@ -101,9 +106,11 @@ Acceptance checklist:
   - latest-frame semantics (can skip ticks)
 
 Exit criteria:
+
 - Viewer consumes tick payloads and renders stable output across runs.
 
 Acceptance checklist:
+
 - Viewer renders from a saved `TickPayload` fixture (snapshot-style test or golden text)
 - Viewer can skip ticks and still render the latest completed tick correctly
 
@@ -116,9 +123,11 @@ Acceptance checklist:
   - replays tick payloads through the same viewer pipeline
 
 Exit criteria:
+
 - A run can be replayed from disk and reproduces the same viewer outputs.
 
 Acceptance checklist:
+
 - A recorded run (JSONL) can be replayed and matches a baseline output (golden file or snapshot)
 
 ## Phase 4: LLM integration (FakeLLM first, then vLLM Metal)
@@ -130,9 +139,11 @@ Acceptance checklist:
 - (If feasible) batch multiple agent requests per tick.
 
 Exit criteria:
+
 - Swap between `FakeLLM` and the real adapter via configuration.
 
 Acceptance checklist:
+
 - With `FakeLLM`, tests are deterministic and cover action selection + validation + `IDLE` fallback
 - With real backend configured, a short run completes without violating “one action per tick”
 
@@ -148,9 +159,11 @@ Acceptance checklist:
 - Provide a deterministic “fake embedder” for tests; wire a real local embedder later.
 
 Exit criteria:
+
 - Agent behavior measurably incorporates retrieved memories (and is testable with fake components).
 
 Acceptance checklist:
+
 - Retrieval has unit tests for: scoring components, per-call min–max normalization edge cases, top-k selection
 - With fake embedder, retrieval returns expected memories deterministically
 
@@ -165,9 +178,11 @@ Acceptance checklist:
   - generate 3–5 insights and link to supporting memories
 
 Exit criteria:
+
 - Reflections and plans appear occasionally and influence subsequent behavior in visible ways.
 
 Acceptance checklist:
+
 - Planning produces 5–8 chunk day plans and decomposes to finer steps (unit-tested)
 - Reflection triggers on threshold and creates linked reflections (unit-tested)
 
@@ -180,5 +195,5 @@ Acceptance checklist:
   - belief divergence rules and debugging tools
 
 Exit criteria:
-- Updated plan with next milestones and any refactors based on real usage.
 
+- Updated plan with next milestones and any refactors based on real usage.
