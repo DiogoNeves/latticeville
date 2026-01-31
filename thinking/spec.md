@@ -36,6 +36,8 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 
 ## World Model (tree)
 
+See [`latticeville_data_models_diagram.png`](./latticeville_data_models_diagram.png) for a visual overview of the data models and state representations.
+
 - World is a tree of areas and objects (root = world, areas can contain subareas or objects, objects are leaves).
 - Example: World → House (area) → Kitchen (subarea) → Stove (object).
 - Each node has: `id`, `name`, `type` (`area`, `object`, `agent`), `parent_id`,

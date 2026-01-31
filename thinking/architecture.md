@@ -20,6 +20,8 @@ This document explains how Latticeville works end-to-end. It is biased toward **
 
 ## World model: canonical world vs per-agent belief
 
+See [`latticeville_data_models_diagram.png`](./latticeville_data_models_diagram.png) for a visual overview of the data models and state representations.
+
 ### Canonical world state
 
 The simulation maintains a canonical world tree:
