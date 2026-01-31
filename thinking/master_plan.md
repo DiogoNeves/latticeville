@@ -210,6 +210,11 @@ Acceptance checklist:
   - trigger when cumulative importance since last reflection exceeds threshold
   - generate 3–5 insights and link to supporting memories
 
+Status: **complete**
+Notes:
+- Added planning + decomposition, and reflection trigger with linked insights.
+- Verified real run with MLX LLM + Qwen embedder and inspected memory logs.
+
 Exit criteria:
 
 - Reflections and plans appear occasionally and influence subsequent behavior in visible ways.
