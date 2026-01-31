@@ -10,6 +10,7 @@ from rich.console import Console
 from latticeville.app import run_simulation, run_simulation_with_viewer
 from latticeville.db.replay_log import RUN_LOG_NAME
 from latticeville.render.live_tail import tail_replay_log
+from latticeville.render.replay_picker import pick_replay_run, run_replay_player
 from latticeville.render.replay_reader import read_tick_payloads
 from latticeville.render.viewer import render_tick
 
@@ -33,6 +34,11 @@ def main() -> None:
         type=Path,
         default=None,
         help="Replay a saved run folder through the viewer.",
+    )
+    parser.add_argument(
+        "--replay-view",
+        action="store_true",
+        help="Select a replay run and view it in the main viewer.",
     )
     parser.add_argument(
         "--run-folder",
@@ -79,6 +85,13 @@ def main() -> None:
         if run_folder is None:
             raise SystemExit("No run folder found. Run a simulation first.")
         tail_replay_log(run_folder / RUN_LOG_NAME)
+        return
+
+    if args.replay_view:
+        run_folder = pick_replay_run(args.replay_dir)
+        if run_folder is None:
+            return
+        run_replay_player(run_folder)
         return
 
     if args.main_view:
