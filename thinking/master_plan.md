@@ -136,6 +136,12 @@ Acceptance checklist:
   - reads the log
   - replays tick payloads through the same viewer pipeline
 
+Status: **complete**
+Notes:
+- Added per-run replay folders with header + tick records in JSONL.
+- Implemented replay reader and CLI replay mode.
+- Added replay log/reader tests.
+
 Exit criteria:
 
 - A run can be replayed from disk and reproduces the same viewer outputs.
