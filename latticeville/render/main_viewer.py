@@ -38,6 +38,7 @@ class MainViewerState:
     agent_positions: dict[str, tuple[str, int, int]] = field(default_factory=dict)
     character_hitboxes: list[tuple[int, int, str]] = field(default_factory=list)
     should_exit: bool = False
+    view_mode: str = "local"
 
 
 TILE_STYLES = {
@@ -72,6 +73,7 @@ def run_main_viewer(
     config = config or load_world_config()
     base_dir = base_dir or WorldPaths().base_dir
     area_maps = _load_area_maps(config, base_dir)
+    overview_map = _load_overview_map(config, base_dir)
     objects_by_area = _objects_by_area(config, area_maps)
     console = Console()
     state = MainViewerState()
@@ -85,14 +87,28 @@ def run_main_viewer(
                 if paused:
                     last_payload = payload
                     _render_and_update(
-                        live, payload, config, area_maps, objects_by_area, state
+                        live,
+                        payload,
+                        config,
+                        area_maps,
+                        overview_map,
+                        objects_by_area,
+                        state,
                     )
                     _pause_loop(
-                        live, payload, config, area_maps, objects_by_area, state
+                        live,
+                        payload,
+                        config,
+                        area_maps,
+                        overview_map,
+                        objects_by_area,
+                        state,
                     )
                     paused = False
                     continue
-                renderable = _render(payload, config, area_maps, objects_by_area, state)
+                renderable = _render(
+                    payload, config, area_maps, overview_map, objects_by_area, state
+                )
                 last_payload = payload
                 live.update(_wrap_with_status(renderable), refresh=True)
                 if state.should_exit:
@@ -106,13 +122,19 @@ def run_main_viewer(
                         last_payload,
                         config,
                         area_maps,
+                        overview_map,
                         objects_by_area,
                         state,
                     )
                     paused = False
                     continue
                 renderable = _render(
-                    last_payload, config, area_maps, objects_by_area, state
+                    last_payload,
+                    config,
+                    area_maps,
+                    overview_map,
+                    objects_by_area,
+                    state,
                 )
                 live.update(_wrap_with_status(renderable), refresh=True)
                 time.sleep(tick_delay)
@@ -128,9 +150,10 @@ def render_main_view(
     config = config or load_world_config()
     base_dir = base_dir or WorldPaths().base_dir
     area_maps = _load_area_maps(config, base_dir)
+    overview_map = _load_overview_map(config, base_dir)
     objects_by_area = _objects_by_area(config, area_maps)
     state = state or MainViewerState()
-    return _render(payload, config, area_maps, objects_by_area, state)
+    return _render(payload, config, area_maps, overview_map, objects_by_area, state)
 
 
 # --- Private helpers ---
@@ -140,6 +163,7 @@ def _render(
     payload: TickPayload,
     config: WorldConfig,
     area_maps: dict[str, AreaMap],
+    overview_map: AreaMap | None,
     objects_by_area: dict[str, list[dict]],
     state: MainViewerState,
 ) -> RenderableType:
@@ -154,20 +178,31 @@ def _render(
     _ingest_speech(payload, state)
 
     left = _render_speech_feed(state, selected_agent=state.selected_agent_id)
-    center = _render_map(
-        payload,
-        config,
-        area_maps,
-        objects_by_area,
-        state,
-        selected_area=selected_area,
-    )
+    if state.view_mode == "overview" and overview_map is not None:
+        center = _render_overview_map(
+            payload,
+            config,
+            overview_map,
+            state,
+            selected_area=selected_area,
+        )
+        title = "World: overview"
+    else:
+        center = _render_map(
+            payload,
+            config,
+            area_maps,
+            objects_by_area,
+            state,
+            selected_area=selected_area,
+        )
+        title = f"World: {selected_area}"
     right = _render_right_panel(payload, state)
 
     layout = Layout()
     layout.split_row(
         Layout(Panel(left, title="Speech"), ratio=2),
-        Layout(Panel(center, title=f"World: {selected_area}"), ratio=5),
+        Layout(Panel(center, title=title), ratio=5),
         Layout(right, ratio=2),
     )
     return layout
@@ -215,6 +250,43 @@ def _render_map(
         if y in bubble_map:
             line.append("  ")
             line.append(bubble_map[y], style="white on blue")
+        lines.append(line)
+    return Align.center(Group(*lines), vertical="middle")
+
+
+def _render_overview_map(
+    payload: TickPayload,
+    config: WorldConfig,
+    overview_map: AreaMap,
+    state: MainViewerState,
+    *,
+    selected_area: str,
+) -> RenderableType:
+    grid = [list(line.ljust(overview_map.width)) for line in overview_map.lines]
+    styles = [[TILE_STYLES.get(ch, "grey70") for ch in row] for row in grid]
+    area_counts = _area_counts(payload)
+    for area in config.areas:
+        anchor = area.overview_anchor
+        if not anchor:
+            continue
+        x, y = anchor.get("x", 0), anchor.get("y", 0)
+        if not (0 <= y < overview_map.height and 0 <= x < overview_map.width):
+            continue
+        count = area_counts.get(area.id, 0)
+        if count > 1:
+            glyph = str(min(count, 9))
+        else:
+            glyph = (area.overview_symbol or area.id[:1] or "?")[:1]
+        style = "bright_white"
+        if area.id == selected_area:
+            style = "bold bright_green"
+        grid[y][x] = glyph
+        styles[y][x] = style
+    lines: list[Text] = []
+    for y, row in enumerate(grid):
+        line = Text()
+        for x, ch in enumerate(row):
+            line.append(ch, style=styles[y][x])
         lines.append(line)
     return Align.center(Group(*lines), vertical="middle")
 
@@ -325,6 +397,23 @@ def _load_area_maps(config: WorldConfig, base_dir: Path) -> dict[str, AreaMap]:
     return maps
 
 
+def _load_overview_map(config: WorldConfig, base_dir: Path) -> AreaMap | None:
+    map_file = config.overview_map_file
+    if not map_file:
+        return None
+    path = base_dir / map_file
+    lines = path.read_text(encoding="utf-8").splitlines()
+    width = max((len(line) for line in lines), default=0)
+    height = len(lines)
+    return AreaMap(
+        area_id="overview",
+        lines=lines,
+        width=width,
+        height=height,
+        portals={},
+    )
+
+
 def _objects_by_area(
     config: WorldConfig, area_maps: dict[str, AreaMap]
 ) -> dict[str, list[dict]]:
@@ -355,6 +444,16 @@ def _agent_area(payload: TickPayload, agent_id: str | None) -> str | None:
         return None
     node = payload.state.world.nodes.get(agent_id)
     return node.parent_id if node else None
+
+
+def _area_counts(payload: TickPayload) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for agent_id in _agent_ids(payload):
+        area_id = _agent_area(payload, agent_id)
+        if not area_id:
+            continue
+        counts[area_id] = counts.get(area_id, 0) + 1
+    return counts
 
 
 def _ingest_speech(payload: TickPayload, state: MainViewerState) -> None:
@@ -470,6 +569,8 @@ def _handle_live_input(
         if key in {"q", "Q"}:
             state.should_exit = True
             return paused
+        if key in {"o", "O"}:
+            state.view_mode = "overview" if state.view_mode == "local" else "local"
         if agent_ids:
             if key == "]":
                 state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, 1)
@@ -491,12 +592,15 @@ def _pause_loop(
     payload: TickPayload,
     config: WorldConfig,
     area_maps: dict[str, AreaMap],
+    overview_map: AreaMap | None,
     objects_by_area: dict[str, list[dict]],
     state: MainViewerState,
 ) -> None:
     while not state.should_exit:
         paused = _handle_live_input(state, payload, paused=True)
-        renderable = _render(payload, config, area_maps, objects_by_area, state)
+        renderable = _render(
+            payload, config, area_maps, overview_map, objects_by_area, state
+        )
         live.update(_wrap_with_status(renderable, paused=True), refresh=True)
         if not paused:
             break
@@ -508,10 +612,13 @@ def _render_and_update(
     payload: TickPayload,
     config: WorldConfig,
     area_maps: dict[str, AreaMap],
+    overview_map: AreaMap | None,
     objects_by_area: dict[str, list[dict]],
     state: MainViewerState,
 ) -> None:
-    renderable = _render(payload, config, area_maps, objects_by_area, state)
+    renderable = _render(
+        payload, config, area_maps, overview_map, objects_by_area, state
+    )
     live.update(_wrap_with_status(renderable), refresh=True)
 
 
@@ -527,7 +634,8 @@ def _wrap_with_status(content: object, *, paused: bool = False) -> Layout:
 def _render_status_bar(*, paused: bool) -> Panel:
     label = "paused" if paused else "live"
     text = Text(
-        f"Main controls: space=pause/resume | q=quit | [/]=cycle | status={label}",
+        "Main controls: space=pause/resume | q=quit | o=overview | "
+        f"[/]=cycle | 1-9=select | status={label}",
         style="bold",
     )
     return Panel(text, padding=(0, 1))

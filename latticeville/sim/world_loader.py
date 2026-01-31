@@ -28,6 +28,8 @@ class AreaDef:
     id: str
     name: str
     map_file: str
+    overview_symbol: str | None
+    overview_anchor: dict[str, int] | None
     portals: dict[str, str]
 
 
@@ -55,6 +57,7 @@ class WorldConfig:
     areas: list[AreaDef]
     objects: list[ObjectDef]
     characters: list[CharacterDef]
+    overview_map_file: str | None
 
 
 def load_world_config(*, paths: WorldPaths | None = None) -> WorldConfig:
@@ -67,6 +70,8 @@ def load_world_config(*, paths: WorldPaths | None = None) -> WorldConfig:
             id=area["id"],
             name=area["name"],
             map_file=area["map_file"],
+            overview_symbol=area.get("overview_symbol"),
+            overview_anchor=area.get("overview_anchor"),
             portals=area.get("portals", {}),
         )
         for area in world_data.get("areas", [])
@@ -92,7 +97,12 @@ def load_world_config(*, paths: WorldPaths | None = None) -> WorldConfig:
         )
         for char in characters_data.get("characters", [])
     ]
-    return WorldConfig(areas=areas, objects=objects, characters=characters)
+    return WorldConfig(
+        areas=areas,
+        objects=objects,
+        characters=characters,
+        overview_map_file=world_data.get("overview_map_file"),
+    )
 
 
 def load_world_state(*, paths: WorldPaths | None = None) -> WorldState:
