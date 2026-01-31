@@ -138,6 +138,7 @@ Acceptance checklist:
 
 Status: **complete**
 Notes:
+
 - Added per-run replay folders with header + tick records in JSONL.
 - Implemented replay reader and CLI replay mode.
 - Added replay log/reader tests.
@@ -161,6 +162,7 @@ Acceptance checklist:
 
 Status: **complete**
 Notes:
+
 - Added FakeLLM + mlx-lm adapter with CLI/env selection.
 - Verified real mlx run using `Qwen/Qwen3-4B-MLX-4bit`.
 - Documented core prompts from the paper in `thinking/prompts_from_paper.md`.
@@ -187,6 +189,7 @@ Acceptance checklist:
 
 Status: **complete**
 Notes:
+
 - Added memory stream + retrieval scoring with per-call normalization.
 - Added fake hash embedder and Qwen3 embedder integration.
 - Logged memory records to JSONL and added viewer memory summary.
@@ -212,6 +215,7 @@ Acceptance checklist:
 
 Status: **complete**
 Notes:
+
 - Added planning + decomposition, and reflection trigger with linked insights.
 - Verified real run with MLX LLM + Qwen embedder and inspected memory logs.
 
@@ -224,19 +228,7 @@ Acceptance checklist:
 - Planning produces 5–8 chunk day plans and decomposes to finer steps (unit-tested)
 - Reflection triggers on threshold and creates linked reflections (unit-tested)
 
-## Phase 7: Re-plan (once the thin slice is fun)
-
-- Reassess priorities based on what’s useful/fun:
-  - richer viewer output (timelines, map, belief diffs)
-  - improved retrieval performance (indexing, caching)
-  - better reactions and social dynamics
-  - belief divergence rules and debugging tools
-
-Exit criteria:
-
-- Updated plan with next milestones and any refactors based on real usage.
-
-## Phase 8: Prompt improvements (paper-aligned)
+## Phase 7: Prompt improvements (paper-aligned)
 
 - Translate `thinking/prompts_from_paper.md` into concrete prompt templates:
   - observation capture

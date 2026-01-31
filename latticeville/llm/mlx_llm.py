@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 
 from latticeville.llm.base import LLMConfig, LLMPolicy
+from latticeville.llm.prompts import (
+    ActInput,
+    PromptId,
+    parse_prompt_output,
+    render_prompt,
+)
 from latticeville.sim.contracts import Action, ActionKind, coerce_action
 from latticeville.sim.world_state import AgentState
 
@@ -20,12 +25,25 @@ class MlxLLM(LLMPolicy):
         self._model, self._tokenizer = load(self.config.model_id)
 
     def decide_action(self, *, world, agent: AgentState, valid_targets) -> Action:
-        prompt = _build_prompt(agent, valid_targets)
-        response = _generate(self._model, self._tokenizer, prompt)
-        parsed = _extract_json(response)
+        prompt = render_prompt(
+            PromptId.ACT,
+            ActInput(
+                agent_name=agent.name,
+                valid_locations=sorted(valid_targets.locations),
+                valid_objects=sorted(valid_targets.objects),
+                valid_agents=sorted(valid_targets.agents),
+                plan_step=None,
+            ),
+        )
+        response = self.complete_prompt(prompt_id=PromptId.ACT.value, prompt=prompt)
+        parsed = parse_prompt_output(PromptId.ACT, response)
         if parsed is None:
             return Action(kind=ActionKind.IDLE)
         return coerce_action(parsed, valid_targets)
+
+    def complete_prompt(self, *, prompt_id: str, prompt: str) -> str:
+        _ = prompt_id
+        return _generate(self._model, self._tokenizer, prompt)
 
 
 def _generate(model, tokenizer, prompt: str) -> str:
@@ -34,32 +52,4 @@ def _generate(model, tokenizer, prompt: str) -> str:
     return generate(model, tokenizer, prompt=prompt, max_tokens=256)
 
 
-def _build_prompt(agent: AgentState, valid_targets) -> str:
-    locations = sorted(valid_targets.locations)
-    objects = sorted(valid_targets.objects)
-    agents = sorted(valid_targets.agents)
-    return (
-        "Return exactly one JSON object for the action.\n"
-        "Schema:\n"
-        '{ "kind": "IDLE|MOVE|INTERACT|SAY",'
-        ' "move": {"to_location_id": "..."},'
-        ' "interact": {"object_id": "...", "verb": "USE|OPEN|CLOSE|TAKE|DROP"},'
-        ' "say": {"to_agent_id": "...", "utterance": "..."} }\n'
-        "Only include the JSON object in the response.\n"
-        f"Agent: {agent.name}\n"
-        f"Valid locations: {locations}\n"
-        f"Valid objects: {objects}\n"
-        f"Valid agents: {agents}\n"
-    )
-
-
-def _extract_json(text: str) -> dict | None:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    snippet = text[start : end + 1]
-    try:
-        return json.loads(snippet)
-    except json.JSONDecodeError:
-        return None
+__all__ = ["MlxLLM"]

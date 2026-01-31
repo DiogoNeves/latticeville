@@ -16,6 +16,9 @@ class LLMPolicy(Protocol):
     ) -> Action:
         """Return one structured action for the agent."""
 
+    def complete_prompt(self, *, prompt_id: str, prompt: str) -> str:
+        """Return raw prompt completion text."""
+
 
 @dataclass(frozen=True)
 class LLMConfig:
