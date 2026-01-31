@@ -159,6 +159,12 @@ Acceptance checklist:
 - (If feasible) batch multiple agent requests per tick.
 - See [LLM smoke test](thinking/vllm_metal_smoke.md)
 
+Status: **complete**
+Notes:
+- Added FakeLLM + mlx-lm adapter with CLI/env selection.
+- Verified real mlx run using `Qwen/Qwen3-4B-MLX-4bit`.
+- Documented core prompts from the paper in `thinking/prompts_from_paper.md`.
+
 Exit criteria:
 
 - Swap between `FakeLLM` and the real adapter via configuration.
