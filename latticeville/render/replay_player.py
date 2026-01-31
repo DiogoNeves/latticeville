@@ -16,6 +16,7 @@ from latticeville.db.replay_log import RUN_LOG_NAME
 from latticeville.render.main_viewer import (
     MainViewerState,
     map_character_click,
+    map_character_index,
     render_main_view,
 )
 from latticeville.render.replay_reader import read_tick_payloads
@@ -71,6 +72,17 @@ def run_replay_player(
                         state.selected_agent_id,
                         1 if event.key == "]" else -1,
                     )
+                if (
+                    event
+                    and event.kind == "key"
+                    and event.key
+                    and event.key.isdigit()
+                    and event.key != "0"
+                ):
+                    agent_ids = _agent_ids(payloads[controller.index])
+                    selected = map_character_index(agent_ids, int(event.key) - 1)
+                    if selected:
+                        state.selected_agent_id = selected
                 if event and event.kind == "mouse":
                     agent = map_character_click(
                         state.character_hitboxes, x=event.x, y=event.y
@@ -109,6 +121,12 @@ def _cycle_agent(payload: TickPayload, current: str | None, delta: int) -> str |
         return agent_ids[0]
     index = agent_ids.index(current)
     return agent_ids[(index + delta) % len(agent_ids)]
+
+
+def _agent_ids(payload: TickPayload) -> list[str]:
+    return sorted(
+        node.id for node in payload.state.world.nodes.values() if node.type == "agent"
+    )
 
 
 def _wrap_with_status(content: object) -> Layout:

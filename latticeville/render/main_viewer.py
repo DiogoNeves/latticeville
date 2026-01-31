@@ -256,7 +256,7 @@ def _render_right_panel(payload: TickPayload, state: MainViewerState) -> Rendera
     per_row = 1
     header_rows = 1
     global_offset = 3
-    list_height = row_count * per_row + header_rows + global_offset
+    list_height = row_count * per_row + header_rows + global_offset + 2
     right.split_column(
         Layout(list_panel, size=list_height),
         Layout(selected_panel),
@@ -273,6 +273,8 @@ def _render_character_list(
     for index, agent_id in enumerate(agents):
         node = payload.state.world.nodes.get(agent_id)
         name = node.name if node else agent_id
+        if index < 9:
+            name = f"{index + 1}. {name}"
         style = "reverse" if agent_id == selected else ""
         table.add_row(name, style=style)
         hitboxes.append((index + 1, 1, agent_id))
@@ -448,6 +450,12 @@ def map_character_click(
     return None
 
 
+def map_character_index(agents: list[str], index: int) -> str | None:
+    if index < 0 or index >= len(agents):
+        return None
+    return agents[index]
+
+
 def _handle_live_input(
     state: MainViewerState, payload: TickPayload, paused: bool
 ) -> bool:
@@ -467,6 +475,10 @@ def _handle_live_input(
                 state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, 1)
             if key == "[":
                 state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, -1)
+            if key.isdigit() and key != "0":
+                selected = map_character_index(agent_ids, int(key) - 1)
+                if selected:
+                    state.selected_agent_id = selected
     if event.kind == "mouse":
         agent = map_character_click(state.character_hitboxes, x=event.x, y=event.y)
         if agent:
