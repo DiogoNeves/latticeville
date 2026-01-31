@@ -87,6 +87,7 @@ Acceptance checklist:
 
 Status: **complete**
 Notes:
+
 - Added minimal world state, movement traversal, patrol policy, and tick loop modules.
 - Wired app to run a short loop and print tick summaries.
 - Added deterministic tick loop tests.
@@ -113,6 +114,7 @@ Acceptance checklist:
 
 Status: **complete**
 Notes:
+
 - Added JSONL replay log + separate Rich viewer that tails the log.
 - Viewer renders tick, locations, recent events, and belief summary.
 - Added snapshot-style viewer tests and live tailer with latest-frame semantics.
@@ -149,6 +151,7 @@ Acceptance checklist:
   - target: Qwen3 via vLLM Metal
   - enforce “one tool call per tick” and `IDLE` fallback
 - (If feasible) batch multiple agent requests per tick.
+- See [LLM smoke test](thinking/vllm_metal_smoke.md)
 
 Exit criteria:
 

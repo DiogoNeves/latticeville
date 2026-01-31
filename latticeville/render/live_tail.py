@@ -36,6 +36,8 @@ def tail_replay_log(path: Path, *, poll_interval: float = 0.2) -> None:
             record = _parse_record(line)
             if record is None:
                 continue
+            if record.get("type") != "tick":
+                continue
             payload = record.get("payload")
             if payload is None:
                 continue
