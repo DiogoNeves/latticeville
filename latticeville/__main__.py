@@ -42,6 +42,16 @@ def main() -> None:
         help="Base replay directory for new runs.",
     )
     parser.add_argument(
+        "--llm",
+        default=None,
+        help="LLM backend to use: fake or mlx (simulation mode only).",
+    )
+    parser.add_argument(
+        "--model-id",
+        default=None,
+        help="Model ID for mlx backend (simulation mode only).",
+    )
+    parser.add_argument(
         "--ticks",
         type=int,
         default=10,
@@ -65,7 +75,12 @@ def main() -> None:
         _replay_run(run_folder)
         return
 
-    created_run = run_simulation(args.replay_dir, ticks=args.ticks)
+    created_run = run_simulation(
+        args.replay_dir,
+        ticks=args.ticks,
+        llm_backend=args.llm,
+        model_id=args.model_id,
+    )
     print(f"Run saved to {created_run}")
 
 
