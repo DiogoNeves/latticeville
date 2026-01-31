@@ -7,9 +7,19 @@ import sys
 import termios
 import tty
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 
-def read_key() -> str | None:
+@dataclass(frozen=True)
+class InputEvent:
+    kind: str
+    key: str | None = None
+    x: int | None = None
+    y: int | None = None
+    button: int | None = None
+
+
+def read_key() -> InputEvent | None:
     if not sys.stdin.isatty():
         return None
     ready, _, _ = select.select([sys.stdin], [], [], 0)
@@ -17,15 +27,13 @@ def read_key() -> str | None:
         return None
     key = sys.stdin.read(1)
     if key == "\x1b":
-        seq = sys.stdin.read(2)
-        if seq == "[A":
-            return "UP"
-        if seq == "[B":
-            return "DOWN"
+        seq = sys.stdin.read(1)
+        if seq == "[":
+            return _parse_csi()
         return None
     if key in {"\r", "\n"}:
-        return "ENTER"
-    return key
+        return InputEvent(kind="key", key="ENTER")
+    return InputEvent(kind="key", key=key)
 
 
 @contextmanager
@@ -36,7 +44,52 @@ def raw_terminal():
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
+        _enable_mouse()
         tty.setcbreak(fd)
+        new_settings = termios.tcgetattr(fd)
+        new_settings[3] &= ~termios.ECHO
+        termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
         yield
     finally:
+        _disable_mouse()
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def _parse_csi() -> InputEvent | None:
+    seq = sys.stdin.read(1)
+    if seq == "A":
+        return InputEvent(kind="key", key="UP")
+    if seq == "B":
+        return InputEvent(kind="key", key="DOWN")
+    if seq == "<":
+        return _parse_mouse_sgr()
+    return None
+
+
+def _parse_mouse_sgr() -> InputEvent | None:
+    buffer = ""
+    while True:
+        char = sys.stdin.read(1)
+        if char in {"m", "M"}:
+            break
+        buffer += char
+    try:
+        parts = buffer.split(";")
+        button = int(parts[0])
+        x = int(parts[1])
+        y = int(parts[2])
+    except (IndexError, ValueError):
+        return None
+    if char == "m":
+        return None
+    return InputEvent(kind="mouse", x=x, y=y, button=button)
+
+
+def _enable_mouse() -> None:
+    sys.stdout.write("\x1b[?1000h\x1b[?1006h")
+    sys.stdout.flush()
+
+
+def _disable_mouse() -> None:
+    sys.stdout.write("\x1b[?1000l\x1b[?1006l")
+    sys.stdout.flush()

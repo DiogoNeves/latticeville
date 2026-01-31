@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterable
 
 from rich.console import Console, Group, RenderableType
+from rich.align import Align
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -35,6 +36,7 @@ class MainViewerState:
     selected_agent_id: str | None = None
     speech_feed: deque[dict] = field(default_factory=lambda: deque(maxlen=20))
     agent_positions: dict[str, tuple[str, int, int]] = field(default_factory=dict)
+    character_hitboxes: list[tuple[int, int, str]] = field(default_factory=list)
     should_exit: bool = False
 
 
@@ -76,31 +78,43 @@ def run_main_viewer(
 
     with raw_terminal():
         with Live(console=console, auto_refresh=False, screen=True) as live:
+            paused = False
             last_payload: TickPayload | None = None
             for payload in payloads:
-                _handle_input(state, payload)
-                renderable = _render(
-                    payload,
-                    config,
-                    area_maps,
-                    objects_by_area,
-                    state,
-                )
+                paused = _handle_live_input(state, payload, paused)
+                if paused:
+                    last_payload = payload
+                    _render_and_update(
+                        live, payload, config, area_maps, objects_by_area, state
+                    )
+                    _pause_loop(
+                        live, payload, config, area_maps, objects_by_area, state
+                    )
+                    paused = False
+                    continue
+                renderable = _render(payload, config, area_maps, objects_by_area, state)
                 last_payload = payload
-                live.update(renderable, refresh=True)
+                live.update(_wrap_with_status(renderable), refresh=True)
                 if state.should_exit:
                     break
                 time.sleep(tick_delay)
             while last_payload is not None and not state.should_exit:
-                _handle_input(state, last_payload)
+                paused = _handle_live_input(state, last_payload, paused)
+                if paused:
+                    _pause_loop(
+                        live,
+                        last_payload,
+                        config,
+                        area_maps,
+                        objects_by_area,
+                        state,
+                    )
+                    paused = False
+                    continue
                 renderable = _render(
-                    last_payload,
-                    config,
-                    area_maps,
-                    objects_by_area,
-                    state,
+                    last_payload, config, area_maps, objects_by_area, state
                 )
-                live.update(renderable, refresh=True)
+                live.update(_wrap_with_status(renderable), refresh=True)
                 time.sleep(tick_delay)
 
 
@@ -148,13 +162,13 @@ def _render(
         state,
         selected_area=selected_area,
     )
-    right = _render_selected_agent(payload, state.selected_agent_id)
+    right = _render_right_panel(payload, state)
 
     layout = Layout()
     layout.split_row(
         Layout(Panel(left, title="Speech"), ratio=2),
         Layout(Panel(center, title=f"World: {selected_area}"), ratio=5),
-        Layout(Panel(right, title="Selected"), ratio=2),
+        Layout(right, ratio=2),
     )
     return layout
 
@@ -202,7 +216,7 @@ def _render_map(
             line.append("  ")
             line.append(bubble_map[y], style="white on blue")
         lines.append(line)
-    return Group(*lines)
+    return Align.center(Group(*lines), vertical="middle")
 
 
 def _render_speech_feed(
@@ -227,6 +241,44 @@ def _render_speech_feed(
     if not state.speech_feed:
         table.add_row("-", "-", "No speech yet.")
     return table
+
+
+def _render_right_panel(payload: TickPayload, state: MainViewerState) -> RenderableType:
+    agents = _agent_ids(payload)
+    list_panel, hitboxes = _render_character_list(
+        payload, agents, state.selected_agent_id
+    )
+    state.character_hitboxes = hitboxes
+    selected_panel = _render_selected_agent(payload, state.selected_agent_id)
+
+    right = Layout()
+    row_count = max(1, len(agents))
+    per_row = 1
+    header_rows = 1
+    global_offset = 3
+    list_height = row_count * per_row + header_rows + global_offset
+    right.split_column(
+        Layout(list_panel, size=list_height),
+        Layout(selected_panel),
+    )
+    return right
+
+
+def _render_character_list(
+    payload: TickPayload, agents: list[str], selected: str | None
+) -> tuple[RenderableType, list[tuple[int, int, str]]]:
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Characters")
+    hitboxes: list[tuple[int, int, str]] = []
+    for index, agent_id in enumerate(agents):
+        node = payload.state.world.nodes.get(agent_id)
+        name = node.name if node else agent_id
+        style = "reverse" if agent_id == selected else ""
+        table.add_row(name, style=style)
+        hitboxes.append((index + 1, 1, agent_id))
+    if not agents:
+        table.add_row("None")
+    return Panel(table, title="Characters"), hitboxes
 
 
 def _render_selected_agent(
@@ -379,19 +431,94 @@ def _truncate(text: str, limit: int = 24) -> str:
 
 
 def _handle_input(state: MainViewerState, payload: TickPayload) -> None:
-    key = read_key()
-    if not key:
-        return
+    _handle_live_input(state, payload, paused=False)
+
+
+def map_character_click(
+    hitboxes: list[tuple[int, int, str]],
+    *,
+    x: int | None,
+    y: int | None,
+) -> str | None:
+    if x is None or y is None:
+        return None
+    for row, col, agent_id in hitboxes:
+        if y == row and x >= col:
+            return agent_id
+    return None
+
+
+def _handle_live_input(
+    state: MainViewerState, payload: TickPayload, paused: bool
+) -> bool:
+    event = read_key()
+    if not event:
+        return paused
     agent_ids = _agent_ids(payload)
-    if not agent_ids:
-        return
-    if key in {"q", "Q"}:
-        state.should_exit = True
-        return
-    if key == "]":
-        state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, 1)
-    if key == "[":
-        state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, -1)
+    if event.kind == "key":
+        key = event.key or ""
+        if key == " ":
+            return not paused
+        if key in {"q", "Q"}:
+            state.should_exit = True
+            return paused
+        if agent_ids:
+            if key == "]":
+                state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, 1)
+            if key == "[":
+                state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, -1)
+    if event.kind == "mouse":
+        agent = map_character_click(state.character_hitboxes, x=event.x, y=event.y)
+        if agent:
+            state.selected_agent_id = agent
+    return paused
+
+
+def _pause_loop(
+    live: Live,
+    payload: TickPayload,
+    config: WorldConfig,
+    area_maps: dict[str, AreaMap],
+    objects_by_area: dict[str, list[dict]],
+    state: MainViewerState,
+) -> None:
+    while not state.should_exit:
+        paused = _handle_live_input(state, payload, paused=True)
+        renderable = _render(payload, config, area_maps, objects_by_area, state)
+        live.update(_wrap_with_status(renderable, paused=True), refresh=True)
+        if not paused:
+            break
+        time.sleep(0.05)
+
+
+def _render_and_update(
+    live: Live,
+    payload: TickPayload,
+    config: WorldConfig,
+    area_maps: dict[str, AreaMap],
+    objects_by_area: dict[str, list[dict]],
+    state: MainViewerState,
+) -> None:
+    renderable = _render(payload, config, area_maps, objects_by_area, state)
+    live.update(_wrap_with_status(renderable), refresh=True)
+
+
+def _wrap_with_status(content: object, *, paused: bool = False) -> Layout:
+    layout = Layout()
+    layout.split_column(
+        Layout(content, ratio=1),
+        Layout(_render_status_bar(paused=paused), size=1),
+    )
+    return layout
+
+
+def _render_status_bar(*, paused: bool) -> Panel:
+    label = "paused" if paused else "live"
+    text = Text(
+        f"Main controls: space=pause/resume | q=quit | [/]=cycle | status={label}",
+        style="bold",
+    )
+    return Panel(text, padding=(0, 1))
 
 
 def _cycle(agent_ids: list[str], current: str | None, delta: int) -> str:

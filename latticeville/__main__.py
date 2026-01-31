@@ -75,8 +75,8 @@ def main() -> None:
     parser.add_argument(
         "--ticks",
         type=int,
-        default=10,
-        help="Number of ticks to run (simulation mode only).",
+        default=None,
+        help="Number of ticks to run (simulation mode only). Omit for infinite.",
     )
     args = parser.parse_args()
 

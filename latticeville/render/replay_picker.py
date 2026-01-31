@@ -55,17 +55,19 @@ def pick_replay_run(base_dir: Path) -> Path | None:
         with Live(console=console, auto_refresh=False, screen=True) as live:
             while True:
                 live.update(_render_picker(entries, index), refresh=True)
-                key = read_key()
-                if key is None:
+                event = read_key()
+                if event is None:
                     time.sleep(0.05)
                     continue
-                if key == "q":
+                if event.kind != "key":
+                    continue
+                if event.key == "q":
                     return None
-                if key == "UP":
+                if event.key == "UP":
                     index = (index - 1) % len(entries)
-                if key == "DOWN":
+                if event.key == "DOWN":
                     index = (index + 1) % len(entries)
-                if key == "ENTER":
+                if event.key == "ENTER":
                     return entries[index].run_dir
 
 

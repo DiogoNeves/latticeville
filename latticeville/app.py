@@ -28,7 +28,7 @@ DEFAULT_EMBED_MODEL_ID = "Qwen/Qwen3-Embedding-0.6B"
 def run_simulation(
     base_dir: Path,
     *,
-    ticks: int = 10,
+    ticks: int | None = None,
     llm_backend: str | None = None,
     model_id: str | None = None,
     embedder_backend: str | None = None,
@@ -40,7 +40,7 @@ def run_simulation(
         metadata={
             "run_id": run_dir.name,
             "created_at": run_dir.name,
-            "ticks": ticks,
+            "ticks": ticks if ticks is not None else "infinite",
         },
     )
     state = build_tiny_world()
@@ -61,7 +61,7 @@ def run_simulation(
 def run_simulation_with_viewer(
     base_dir: Path,
     *,
-    ticks: int = 10,
+    ticks: int | None = None,
     llm_backend: str | None = None,
     model_id: str | None = None,
     embedder_backend: str | None = None,
@@ -74,7 +74,7 @@ def run_simulation_with_viewer(
         metadata={
             "run_id": run_dir.name,
             "created_at": run_dir.name,
-            "ticks": ticks,
+            "ticks": ticks if ticks is not None else "infinite",
         },
     )
     state = build_tiny_world()

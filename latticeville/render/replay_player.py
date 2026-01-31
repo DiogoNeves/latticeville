@@ -8,9 +8,16 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.live import Live
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.text import Text
 
 from latticeville.db.replay_log import RUN_LOG_NAME
-from latticeville.render.main_viewer import MainViewerState, render_main_view
+from latticeville.render.main_viewer import (
+    MainViewerState,
+    map_character_click,
+    render_main_view,
+)
 from latticeville.render.replay_reader import read_tick_payloads
 from latticeville.render.terminal_input import raw_terminal, read_key
 from latticeville.sim.contracts import TickPayload
@@ -46,24 +53,30 @@ def run_replay_player(
             while True:
                 payload = payloads[controller.index]
                 renderable = render_main_view(payload, state=state)
-                live.update(renderable, refresh=True)
-                key = read_key()
-                if key == "q":
+                live.update(_wrap_with_status(renderable), refresh=True)
+                event = read_key()
+                if event and event.kind == "key" and event.key == "q":
                     break
-                if key == " ":
+                if event and event.kind == "key" and event.key == " ":
                     controller.playing = not controller.playing
-                if key == "n":
+                if event and event.kind == "key" and event.key == "n":
                     controller.playing = False
                     controller.index = min(controller.index + 1, len(payloads) - 1)
-                if key == "r":
+                if event and event.kind == "key" and event.key == "r":
                     controller.reset()
                     state = MainViewerState()
-                if key in {"[", "]"}:
+                if event and event.kind == "key" and event.key in {"[", "]"}:
                     state.selected_agent_id = _cycle_agent(
                         payloads[controller.index],
                         state.selected_agent_id,
-                        1 if key == "]" else -1,
+                        1 if event.key == "]" else -1,
                     )
+                if event and event.kind == "mouse":
+                    agent = map_character_click(
+                        state.character_hitboxes, x=event.x, y=event.y
+                    )
+                    if agent:
+                        state.selected_agent_id = agent
 
                 _advance(controller, payloads, tick_delay)
                 time.sleep(0.05)
@@ -96,3 +109,20 @@ def _cycle_agent(payload: TickPayload, current: str | None, delta: int) -> str |
         return agent_ids[0]
     index = agent_ids.index(current)
     return agent_ids[(index + delta) % len(agent_ids)]
+
+
+def _wrap_with_status(content: object) -> Layout:
+    layout = Layout()
+    layout.split_column(
+        Layout(content, ratio=1),
+        Layout(_render_status_bar(), size=3),
+    )
+    return layout
+
+
+def _render_status_bar() -> Panel:
+    text = Text(
+        "Replay controls: space=play/pause | n=step | r=restart | q=quit | [/]=cycle",
+        style="bold",
+    )
+    return Panel(text, padding=(0, 1))

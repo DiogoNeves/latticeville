@@ -15,4 +15,4 @@ def test_main_viewer_renders() -> None:
     output = console.export_text()
     assert "Speech" in output
     assert "World:" in output
-    assert "Selected" in output
+    assert "Characters" in output

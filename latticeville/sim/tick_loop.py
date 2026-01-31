@@ -34,7 +34,7 @@ from latticeville.sim.world_state import WorldState
 
 def run_ticks(
     state: WorldState,
-    ticks: int,
+    ticks: int | None,
     *,
     policy: LLMPolicy | None = None,
     embedder: Embedder | None = None,
@@ -50,7 +50,8 @@ def run_ticks(
         agent_id: ReflectionState(threshold=10.0) for agent_id in state.agents.keys()
     }
     plan_cache: dict[str, list[PlanItem]] = {}
-    for _ in range(ticks):
+    step_count = 0
+    while ticks is None or step_count < ticks:
         world_snapshot = state.world.model_copy(deep=True)
         snapshot_locations = {
             agent_id: agent.location_id for agent_id, agent in state.agents.items()
@@ -354,6 +355,7 @@ def run_ticks(
             events=events or None,
         )
         yield payload
+        step_count += 1
 
 
 def _run_prompt(policy: LLMPolicy, prompt_id: PromptId, payload) -> object | None:
