@@ -111,6 +111,12 @@ Acceptance checklist:
   - tick boundary rendering only
   - latest-frame semantics (can skip ticks)
 
+Status: **complete**
+Notes:
+- Added JSONL replay log + separate Rich viewer that tails the log.
+- Viewer renders tick, locations, recent events, and belief summary.
+- Added snapshot-style viewer tests and live tailer with latest-frame semantics.
+
 Exit criteria:
 
 - Viewer consumes tick payloads and renders stable output across runs.
