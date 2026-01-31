@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from latticeville.db.replay_log import RUN_LOG_NAME
-from latticeville.render.replay_picker import list_replay_runs, load_replay_payloads
+from latticeville.render.replay_picker import list_replay_runs
+from latticeville.render.replay_player import load_replay_payloads
 
 
 def test_list_replay_runs(tmp_path: Path) -> None:

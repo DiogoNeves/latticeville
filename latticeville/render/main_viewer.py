@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import select
-import sys
-import termios
 import time
-import tty
 from collections import deque
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,6 +16,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.live import Live
 
+from latticeville.render.terminal_input import raw_terminal, read_key
 from latticeville.sim.contracts import TickPayload
 from latticeville.sim.world_loader import WorldConfig, WorldPaths, load_world_config
 
@@ -78,7 +74,7 @@ def run_main_viewer(
     console = Console()
     state = MainViewerState()
 
-    with _raw_terminal():
+    with raw_terminal():
         with Live(console=console, auto_refresh=False, screen=True) as live:
             last_payload: TickPayload | None = None
             for payload in payloads:
@@ -121,6 +117,9 @@ def render_main_view(
     objects_by_area = _objects_by_area(config, area_maps)
     state = state or MainViewerState()
     return _render(payload, config, area_maps, objects_by_area, state)
+
+
+# --- Private helpers ---
 
 
 def _render(
@@ -380,7 +379,7 @@ def _truncate(text: str, limit: int = 24) -> str:
 
 
 def _handle_input(state: MainViewerState, payload: TickPayload) -> None:
-    key = _read_key()
+    key = read_key()
     if not key:
         return
     agent_ids = _agent_ids(payload)
@@ -400,26 +399,3 @@ def _cycle(agent_ids: list[str], current: str | None, delta: int) -> str:
         return agent_ids[0]
     index = agent_ids.index(current)
     return agent_ids[(index + delta) % len(agent_ids)]
-
-
-def _read_key() -> str | None:
-    if not sys.stdin.isatty():
-        return None
-    ready, _, _ = select.select([sys.stdin], [], [], 0)
-    if ready:
-        return sys.stdin.read(1)
-    return None
-
-
-@contextmanager
-def _raw_terminal():
-    if not sys.stdin.isatty():
-        yield
-        return
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
-        yield
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)

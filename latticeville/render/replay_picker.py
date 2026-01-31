@@ -3,12 +3,7 @@
 from __future__ import annotations
 
 import json
-import select
-import sys
-import termios
 import time
-import tty
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from rich.console import Console, RenderableType
@@ -17,8 +12,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 from latticeville.db.replay_log import RUN_LOG_NAME
-from latticeville.render.main_viewer import MainViewerState, render_main_view
-from latticeville.render.replay_reader import read_tick_payloads
+from latticeville.render.replay_player import run_replay_player
+from latticeville.render.terminal_input import raw_terminal, read_key
 from latticeville.sim.contracts import TickPayload
 
 
@@ -56,11 +51,11 @@ def pick_replay_run(base_dir: Path) -> Path | None:
         return None
     console = Console()
     index = 0
-    with _raw_terminal():
+    with raw_terminal():
         with Live(console=console, auto_refresh=False, screen=True) as live:
             while True:
                 live.update(_render_picker(entries, index), refresh=True)
-                key = _read_key()
+                key = read_key()
                 if key is None:
                     time.sleep(0.05)
                     continue
@@ -74,56 +69,11 @@ def pick_replay_run(base_dir: Path) -> Path | None:
                     return entries[index].run_dir
 
 
-def run_replay_player(
-    run_folder: Path,
-    *,
-    tick_delay: float = 0.5,
-) -> None:
-    log_path = run_folder / RUN_LOG_NAME
-    payloads = load_replay_payloads(log_path)
-    if not payloads:
+def pick_and_run_replay(base_dir: Path) -> None:
+    run_folder = pick_replay_run(base_dir)
+    if run_folder is None:
         return
-    state = MainViewerState()
-    console = Console()
-    playing = True
-    index = 0
-    last_tick = time.monotonic()
-
-    with _raw_terminal():
-        with Live(console=console, auto_refresh=False, screen=True) as live:
-            while True:
-                payload = payloads[index]
-                renderable = render_main_view(payload, state=state)
-                live.update(renderable, refresh=True)
-                key = _read_key()
-                if key == "q":
-                    break
-                if key == " ":
-                    playing = not playing
-                if key == "n":
-                    playing = False
-                    index = min(index + 1, len(payloads) - 1)
-                if key == "r":
-                    index = 0
-                    state = MainViewerState()
-                    playing = False
-                if key in {"[", "]"}:
-                    state.selected_agent_id = _cycle_agent(
-                        payloads[index],
-                        state.selected_agent_id,
-                        1 if key == "]" else -1,
-                    )
-
-                if playing and time.monotonic() - last_tick >= tick_delay:
-                    index = min(index + 1, len(payloads) - 1)
-                    last_tick = time.monotonic()
-                    if index == len(payloads) - 1:
-                        playing = False
-                time.sleep(0.05)
-
-
-def load_replay_payloads(log_path: Path) -> list[TickPayload]:
-    return list(read_tick_payloads(log_path))
+    run_replay_player(run_folder)
 
 
 def _render_picker(entries: list[ReplayEntry], index: int) -> RenderableType:
@@ -160,36 +110,3 @@ def _cycle_agent(payload: TickPayload, current: str | None, delta: int) -> str |
         return agent_ids[0]
     index = agent_ids.index(current)
     return agent_ids[(index + delta) % len(agent_ids)]
-
-
-def _read_key() -> str | None:
-    if not sys.stdin.isatty():
-        return None
-    ready, _, _ = select.select([sys.stdin], [], [], 0)
-    if not ready:
-        return None
-    key = sys.stdin.read(1)
-    if key == "\x1b":
-        seq = sys.stdin.read(2)
-        if seq == "[A":
-            return "UP"
-        if seq == "[B":
-            return "DOWN"
-        return None
-    if key in {"\r", "\n"}:
-        return "ENTER"
-    return key
-
-
-@contextmanager
-def _raw_terminal():
-    if not sys.stdin.isatty():
-        yield
-        return
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
-        yield
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)

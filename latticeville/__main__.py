@@ -10,7 +10,7 @@ from rich.console import Console
 from latticeville.app import run_simulation, run_simulation_with_viewer
 from latticeville.db.replay_log import RUN_LOG_NAME
 from latticeville.render.live_tail import tail_replay_log
-from latticeville.render.replay_picker import pick_replay_run, run_replay_player
+from latticeville.render.replay_picker import pick_and_run_replay
 from latticeville.render.replay_reader import read_tick_payloads
 from latticeville.render.viewer import render_tick
 
@@ -88,10 +88,7 @@ def main() -> None:
         return
 
     if args.replay_view:
-        run_folder = pick_replay_run(args.replay_dir)
-        if run_folder is None:
-            return
-        run_replay_player(run_folder)
+        pick_and_run_replay(args.replay_dir)
         return
 
     if args.main_view:
