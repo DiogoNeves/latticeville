@@ -20,9 +20,11 @@ def render_tick(payload: TickPayload, *, max_events: int = 5) -> RenderableType:
     events = _render_events(payload, max_events=max_events)
     belief = _render_belief_summary(payload)
     memory = _render_memory_summary(payload)
+    plan = _render_plan_summary(payload)
+    reflections = _render_reflection_summary(payload)
 
     left = Group(header, locations, events)
-    right = Group(belief, memory)
+    right = Group(belief, memory, plan, reflections)
     layout = Columns([Panel(left, title="Simulation"), Panel(right, title="Belief")])
     return layout
 
@@ -90,6 +92,44 @@ def _render_memory_summary(payload: TickPayload) -> RenderableType:
     table.add_row("Latest", "; ".join(latest) if latest else "None")
     table.add_row("Retrieved", "; ".join(retrieved) if retrieved else "None")
     return Panel(table, title="Memory Summary")
+
+
+def _render_plan_summary(payload: TickPayload) -> RenderableType:
+    summaries = [
+        event.payload
+        for event in (payload.events or [])
+        if event.kind == "PLAN_SUMMARY"
+    ]
+    if not summaries:
+        return Panel(Text("No plan data available."), title="Plan Summary")
+    summary = sorted(summaries, key=lambda item: item.get("agent_id", ""))[0]
+    table = Table(show_header=False)
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Agent", summary.get("agent_id", ""))
+    table.add_row("Window", f"{summary.get('start_tick')}–{summary.get('end_tick')}")
+    table.add_row("Location", summary.get("location", ""))
+    table.add_row("Description", summary.get("description", ""))
+    return Panel(table, title="Plan Summary")
+
+
+def _render_reflection_summary(payload: TickPayload) -> RenderableType:
+    summaries = [
+        event.payload
+        for event in (payload.events or [])
+        if event.kind == "REFLECTION_SUMMARY"
+    ]
+    if not summaries:
+        return Panel(Text("No reflections yet."), title="Reflection Summary")
+    summary = sorted(summaries, key=lambda item: item.get("agent_id", ""))[0]
+    table = Table(show_header=False)
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Agent", summary.get("agent_id", ""))
+    table.add_row("Count", str(summary.get("count", 0)))
+    items = summary.get("items", [])
+    table.add_row("Items", "; ".join(items) if items else "None")
+    return Panel(table, title="Reflection Summary")
 
 
 def _collect_area_names(nodes: Iterable) -> list[str]:

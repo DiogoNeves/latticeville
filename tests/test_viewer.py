@@ -38,6 +38,8 @@ def test_render_tick_contains_expected_sections() -> None:
     assert "Recent Events" in output
     assert "Belief Summary" in output
     assert "Memory Summary" in output
+    assert "Plan Summary" in output
+    assert "Reflection Summary" in output
     assert "Ada" in output
     assert "MOVE" in output
 
@@ -67,3 +69,5 @@ def test_render_tick_without_events_or_beliefs() -> None:
 
     assert "None" in output
     assert "Memory Summary" in output
+    assert "Plan Summary" in output
+    assert "Reflection Summary" in output
