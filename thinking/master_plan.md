@@ -185,6 +185,12 @@ Acceptance checklist:
   - implement min–max normalization per retrieval call and top-k selection
 - Provide a deterministic “fake embedder” for tests; wire a real local embedder later.
 
+Status: **complete**
+Notes:
+- Added memory stream + retrieval scoring with per-call normalization.
+- Added fake hash embedder and Qwen3 embedder integration.
+- Logged memory records to JSONL and added viewer memory summary.
+
 Exit criteria:
 
 - Agent behavior measurably incorporates retrieved memories (and is testable with fake components).
