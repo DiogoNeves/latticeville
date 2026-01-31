@@ -230,3 +230,26 @@ Acceptance checklist:
 Exit criteria:
 
 - Updated plan with next milestones and any refactors based on real usage.
+
+## Phase 8: Prompt improvements (paper-aligned)
+
+- Translate `thinking/prompts_from_paper.md` into concrete prompt templates:
+  - observation capture
+  - importance scoring
+  - reflection (question generation + insights)
+  - daily planning + recursive decomposition
+  - reacting (react/ignore + reaction description)
+  - dialogue (initiator + responder)
+- Define shared prompt inputs and output schemas to match sim contracts.
+- Add a small prompt fixture set for regression tests (FakeLLM + deterministic stubs).
+- Wire prompt selection into the LLM adapter with a clear prompt catalog.
+
+Exit criteria:
+
+- Prompts are implemented as reusable templates with documented inputs/outputs and stable fixtures.
+
+Acceptance checklist:
+
+- Each prompt has a template + input contract + output shape documented in code
+- Prompt fixtures produce deterministic outputs under FakeLLM
+- Prompt catalog is referenced by the LLM adapter without ad-hoc inline strings
