@@ -16,6 +16,8 @@ This folder contains design and planning documents for Latticeville.
   - A summary of the _Generative Agents_ paper. It describes the paper, not this project.
 - **Local LLM learnings:** [vLLM Metal: Direct offline API learnings](/thinking/vllm_metal_smoke.md)
   - What we learned about direct (no-server) LLM + embeddings APIs.
+- **World data format:** [WORLD FORMAT](/thinking/world_format.md)
+  - World JSON/maps + character roster conventions.
 
 ## Terminology (quick glossary)
 

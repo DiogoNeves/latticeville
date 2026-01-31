@@ -1,0 +1,18 @@
+{
+  "characters": [
+    {
+      "id": "ada",
+      "name": "Ada",
+      "symbol": "@",
+      "start_area_id": "street",
+      "patrol_route": ["street", "park"]
+    },
+    {
+      "id": "byron",
+      "name": "Byron",
+      "symbol": "@",
+      "start_area_id": "street",
+      "patrol_route": ["street", "cafe"]
+    }
+  ]
+}

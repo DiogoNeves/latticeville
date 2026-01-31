@@ -19,6 +19,7 @@ from latticeville.sim.contracts import (
 )
 from latticeville.sim.movement import advance_movement, find_path, start_move
 from latticeville.sim.tick_loop import run_ticks
+from latticeville.sim.world_loader import load_world_config, load_world_state
 from latticeville.sim.world_state import AgentState, WorldState, build_tiny_world
 
 __all__ = [
@@ -42,6 +43,8 @@ __all__ = [
     "choose_patrol_action",
     "coerce_action",
     "find_path",
+    "load_world_config",
+    "load_world_state",
     "run_ticks",
     "start_move",
 ]

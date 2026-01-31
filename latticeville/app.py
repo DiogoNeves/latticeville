@@ -14,8 +14,10 @@ from latticeville.llm.base import LLMConfig, LLMPolicy
 from latticeville.llm.embedder import Embedder, FakeEmbedder, QwenEmbedder
 from latticeville.llm.fake_llm import FakeLLM
 from latticeville.llm.mlx_llm import MlxLLM
+from latticeville.render.main_viewer import run_main_viewer
 from latticeville.sim.tick_loop import run_ticks
 from latticeville.sim.world_state import build_tiny_world
+from latticeville.sim.world_loader import load_world_config
 
 DEFAULT_LLM_BACKEND = "fake"
 DEFAULT_MODEL_ID = "mlx-community/Qwen3-3B-4bit"
@@ -53,6 +55,46 @@ def run_simulation(
         memory_log_path=memory_log_path,
     ):
         append_tick_payload(log_path, payload)
+    return run_dir
+
+
+def run_simulation_with_viewer(
+    base_dir: Path,
+    *,
+    ticks: int = 10,
+    llm_backend: str | None = None,
+    model_id: str | None = None,
+    embedder_backend: str | None = None,
+    embedder_model_id: str | None = None,
+    tick_delay: float = 0.2,
+) -> Path:
+    run_dir, log_path = create_run_folder(base_dir)
+    write_header(
+        log_path,
+        metadata={
+            "run_id": run_dir.name,
+            "created_at": run_dir.name,
+            "ticks": ticks,
+        },
+    )
+    state = build_tiny_world()
+    policy = _resolve_policy(llm_backend, model_id)
+    embedder = _resolve_embedder(embedder_backend, embedder_model_id)
+    memory_log_path = Path("data/memory") / f"{run_dir.name}.jsonl"
+    config = load_world_config()
+
+    def _payloads():
+        for payload in run_ticks(
+            state,
+            ticks=ticks,
+            policy=policy,
+            embedder=embedder,
+            memory_log_path=memory_log_path,
+        ):
+            append_tick_payload(log_path, payload)
+            yield payload
+
+    run_main_viewer(_payloads(), config=config, tick_delay=tick_delay)
     return run_dir
 
 

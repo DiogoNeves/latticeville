@@ -8,7 +8,9 @@ from latticeville.sim.contracts import Event, NodeType, WorldTree
 from latticeville.sim.world_state import AgentState
 
 
-def build_area_graph(world: WorldTree) -> dict[str, set[str]]:
+def build_area_graph(
+    world: WorldTree, *, portals: dict[str, dict[str, str]] | None = None
+) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     for node in world.nodes.values():
         if node.type != NodeType.AREA:
@@ -22,13 +24,25 @@ def build_area_graph(world: WorldTree) -> dict[str, set[str]]:
             if child and child.type == NodeType.AREA:
                 graph[node.id].add(child_id)
                 graph.setdefault(child_id, set()).add(node.id)
+    if portals:
+        for area_id, links in portals.items():
+            graph.setdefault(area_id, set())
+            for destination in links.values():
+                graph.setdefault(destination, set())
+                graph[area_id].add(destination)
     return graph
 
 
-def find_path(world: WorldTree, start: str, goal: str) -> list[str]:
+def find_path(
+    world: WorldTree,
+    start: str,
+    goal: str,
+    *,
+    portals: dict[str, dict[str, str]] | None = None,
+) -> list[str]:
     if start == goal:
         return []
-    graph = build_area_graph(world)
+    graph = build_area_graph(world, portals=portals)
     if start not in graph or goal not in graph:
         return []
 
@@ -57,10 +71,16 @@ def find_path(world: WorldTree, start: str, goal: str) -> list[str]:
     return path
 
 
-def start_move(agent: AgentState, world: WorldTree, destination: str) -> None:
+def start_move(
+    agent: AgentState,
+    world: WorldTree,
+    destination: str,
+    *,
+    portals: dict[str, dict[str, str]] | None = None,
+) -> None:
     if agent.location_id == destination:
         return
-    path = find_path(world, agent.location_id, destination)
+    path = find_path(world, agent.location_id, destination, portals=portals)
     if not path:
         return
     agent.path_remaining = path

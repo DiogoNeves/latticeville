@@ -7,7 +7,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from latticeville.app import run_simulation
+from latticeville.app import run_simulation, run_simulation_with_viewer
 from latticeville.db.replay_log import RUN_LOG_NAME
 from latticeville.render.live_tail import tail_replay_log
 from latticeville.render.replay_reader import read_tick_payloads
@@ -22,6 +22,11 @@ def main() -> None:
         "--view",
         action="store_true",
         help="Tail a replay log and render the live viewer.",
+    )
+    parser.add_argument(
+        "--main-view",
+        action="store_true",
+        help="Run simulation and render the main world viewer.",
     )
     parser.add_argument(
         "--replay",
@@ -74,6 +79,18 @@ def main() -> None:
         if run_folder is None:
             raise SystemExit("No run folder found. Run a simulation first.")
         tail_replay_log(run_folder / RUN_LOG_NAME)
+        return
+
+    if args.main_view:
+        created_run = run_simulation_with_viewer(
+            args.replay_dir,
+            ticks=args.ticks,
+            llm_backend=args.llm,
+            model_id=args.model_id,
+            embedder_backend=args.embedder,
+            embedder_model_id=args.embed_model_id,
+        )
+        print(f"Run saved to {created_run}")
         return
 
     if args.replay is not None:

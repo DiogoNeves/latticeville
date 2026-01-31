@@ -25,8 +25,13 @@ class LLMConfig:
     model_id: str
 
 
-def build_valid_targets(world: WorldTree, *, agent: AgentState) -> ValidTargets:
-    graph = build_area_graph(world)
+def build_valid_targets(
+    world: WorldTree,
+    *,
+    agent: AgentState,
+    portals: dict[str, dict[str, str]] | None = None,
+) -> ValidTargets:
+    graph = build_area_graph(world, portals=portals)
     locations = set(graph.keys())
     objects = {
         node.id

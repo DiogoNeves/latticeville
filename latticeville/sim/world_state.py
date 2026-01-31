@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from latticeville.sim.contracts import NodeType, WorldNode, WorldTree
+from latticeville.sim.contracts import WorldTree
 
 
 @dataclass
@@ -28,67 +28,11 @@ class AgentState:
 class WorldState:
     world: WorldTree
     agents: dict[str, AgentState]
+    portals: dict[str, dict[str, str]] = field(default_factory=dict)
     tick: int = 0
 
 
 def build_tiny_world() -> WorldState:
-    nodes = {
-        "world": WorldNode(
-            id="world",
-            name="World",
-            type=NodeType.AREA,
-            parent_id=None,
-            children=["street"],
-        ),
-        "street": WorldNode(
-            id="street",
-            name="Neon Street",
-            type=NodeType.AREA,
-            parent_id="world",
-            children=["cafe", "ada", "byron"],
-        ),
-        "cafe": WorldNode(
-            id="cafe",
-            name="Cafe",
-            type=NodeType.AREA,
-            parent_id="street",
-            children=["park"],
-        ),
-        "park": WorldNode(
-            id="park",
-            name="Park",
-            type=NodeType.AREA,
-            parent_id="cafe",
-            children=[],
-        ),
-        "ada": WorldNode(
-            id="ada",
-            name="Ada",
-            type=NodeType.AGENT,
-            parent_id="street",
-            children=[],
-        ),
-        "byron": WorldNode(
-            id="byron",
-            name="Byron",
-            type=NodeType.AGENT,
-            parent_id="street",
-            children=[],
-        ),
-    }
-    world = WorldTree(root_id="world", nodes=nodes)
-    agents = {
-        "ada": AgentState(
-            agent_id="ada",
-            name="Ada",
-            location_id="street",
-            patrol_route=["street", "park"],
-        ),
-        "byron": AgentState(
-            agent_id="byron",
-            name="Byron",
-            location_id="street",
-            patrol_route=["street", "cafe"],
-        ),
-    }
-    return WorldState(world=world, agents=agents)
+    from latticeville.sim.world_loader import load_world_state
+
+    return load_world_state()

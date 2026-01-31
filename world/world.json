@@ -1,0 +1,52 @@
+{
+  "areas": [
+    {
+      "id": "street",
+      "name": "Neon Street",
+      "map_file": "street.map",
+      "portals": {
+        "1": "cafe"
+      }
+    },
+    {
+      "id": "cafe",
+      "name": "Cafe",
+      "map_file": "cafe.map",
+      "portals": {
+        "1": "street",
+        "2": "park"
+      }
+    },
+    {
+      "id": "park",
+      "name": "Park",
+      "map_file": "park.map",
+      "portals": {
+        "1": "cafe"
+      }
+    }
+  ],
+  "objects": [
+    {
+      "id": "bench",
+      "name": "Bench",
+      "area_id": "park",
+      "symbol": "B",
+      "position": { "x": 6, "y": 3 }
+    },
+    {
+      "id": "tree",
+      "name": "Tree",
+      "area_id": "park",
+      "symbol": "T",
+      "position": { "x": 3, "y": 2 }
+    },
+    {
+      "id": "counter",
+      "name": "Counter",
+      "area_id": "cafe",
+      "symbol": "*",
+      "position": { "x": 5, "y": 2 }
+    }
+  ]
+}

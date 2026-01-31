@@ -60,7 +60,9 @@ def run_ticks(
         for agent_id in sorted(state.agents.keys()):
             agent = state.agents[agent_id]
             agent.location_id = snapshot_locations[agent_id]
-            valid_targets = build_valid_targets(world_snapshot, agent=agent)
+            valid_targets = build_valid_targets(
+                world_snapshot, agent=agent, portals=state.portals
+            )
             actions[agent_id] = llm_policy.decide_action(
                 world=world_snapshot,
                 agent=agent,
@@ -75,7 +77,12 @@ def run_ticks(
                 continue
             if action.move is None:
                 continue
-            start_move(agent, state.world, action.move.to_location_id)
+            start_move(
+                agent,
+                state.world,
+                action.move.to_location_id,
+                portals=state.portals,
+            )
 
         events: list[Event] = []
         move_events_by_agent: dict[str, Event] = {}
@@ -121,6 +128,7 @@ def run_ticks(
                         memory_log_path, agent_id=agent_id, record=record
                     )
 
+            say_event: Event | None = None
             action = actions.get(agent_id)
             if action and action.kind == ActionKind.SAY and action.say is not None:
                 utterance = _generate_dialogue(
@@ -134,6 +142,15 @@ def run_ticks(
                 say_desc = (
                     f"{agent.name} says to {action.say.to_agent_id}: "
                     f'"{action.say.utterance}".'
+                )
+                say_event = Event(
+                    kind="SAY",
+                    payload={
+                        "agent_id": agent_id,
+                        "to_agent_id": action.say.to_agent_id,
+                        "utterance": action.say.utterance,
+                        "area_id": agent.location_id,
+                    },
                 )
                 say_importance = _score_importance(
                     llm_policy,
@@ -176,6 +193,8 @@ def run_ticks(
                         agent_id=agent_id,
                         record=move_record,
                     )
+            if say_event:
+                events.append(say_event)
 
             if agent_id not in plan_cache:
                 day_plan = _build_day_plan(llm_policy, agent.name, tick_id)
