@@ -121,7 +121,8 @@
       "position": {
         "x": 60,
         "y": 16
-      }
+      },
+      "color": "blue"
     },
     {
       "id": "chair12",
@@ -131,7 +132,8 @@
       "position": {
         "x": 58,
         "y": 16
-      }
+      },
+      "color": "blue"
     },
     {
       "id": "chair13",
@@ -141,7 +143,8 @@
       "position": {
         "x": 59,
         "y": 15
-      }
+      },
+      "color": "blue"
     },
     {
       "id": "table2",
@@ -171,7 +174,8 @@
       "position": {
         "x": 64,
         "y": 15
-      }
+      },
+      "color": "blue"
     },
     {
       "id": "chair22",
@@ -181,7 +185,8 @@
       "position": {
         "x": 64,
         "y": 16
-      }
+      },
+      "color": "blue"
     },
     {
       "id": "chair23",
@@ -191,7 +196,8 @@
       "position": {
         "x": 66,
         "y": 16
-      }
+      },
+      "color": "blue"
     },
     {
       "id": "chair24",
@@ -201,7 +207,8 @@
       "position": {
         "x": 66,
         "y": 15
-      }
+      },
+      "color": "blue"
     },
     {
       "id": "fruit1",
@@ -211,7 +218,8 @@
       "position": {
         "x": 59,
         "y": 3
-      }
+      },
+      "color": "red"
     },
     {
       "id": "fruit2",
@@ -221,7 +229,8 @@
       "position": {
         "x": 60,
         "y": 3
-      }
+      },
+      "color": "red"
     },
     {
       "id": "veg1",
@@ -231,7 +240,8 @@
       "position": {
         "x": 62,
         "y": 3
-      }
+      },
+      "color": "green"
     },
     {
       "id": "veg2",
@@ -240,6 +250,18 @@
       "symbol": "v",
       "position": {
         "x": 63,
+        "y": 3
+      },
+      "color": "green"
+    },
+    {
+      "id": "bakery",
+      "name": "bakery",
+      "room_id": "market",
+      "symbol": "b",
+      "color": "white",
+      "position": {
+        "x": 65,
         "y": 3
       }
     }
