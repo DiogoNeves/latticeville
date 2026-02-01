@@ -50,6 +50,16 @@
         "width": 19,
         "height": 7
       }
+    },
+    {
+      "id": "market",
+      "name": "Market",
+      "bounds": {
+        "x": 56,
+        "y": 2,
+        "width": 25,
+        "height": 6
+      }
     }
   ],
   "objects": [
@@ -81,6 +91,156 @@
       "position": {
         "x": 45,
         "y": 4
+      }
+    },
+    {
+      "id": "coffee_machine",
+      "name": "coffee machine",
+      "room_id": "cafe",
+      "symbol": "C",
+      "position": {
+        "x": 54,
+        "y": 17
+      }
+    },
+    {
+      "id": "table1",
+      "name": "table1",
+      "room_id": "cafe",
+      "symbol": "t",
+      "position": {
+        "x": 59,
+        "y": 16
+      }
+    },
+    {
+      "id": "chair11",
+      "name": "chair11",
+      "room_id": "cafe",
+      "symbol": "c",
+      "position": {
+        "x": 60,
+        "y": 16
+      }
+    },
+    {
+      "id": "chair12",
+      "name": "chair12",
+      "room_id": "cafe",
+      "symbol": "c",
+      "position": {
+        "x": 58,
+        "y": 16
+      }
+    },
+    {
+      "id": "chair13",
+      "name": "chair13",
+      "room_id": "cafe",
+      "symbol": "c",
+      "position": {
+        "x": 59,
+        "y": 15
+      }
+    },
+    {
+      "id": "table2",
+      "name": "table2",
+      "room_id": "cafe",
+      "symbol": "t",
+      "position": {
+        "x": 65,
+        "y": 15
+      }
+    },
+    {
+      "id": "table2_2",
+      "name": "table2",
+      "room_id": "cafe",
+      "symbol": "t",
+      "position": {
+        "x": 65,
+        "y": 16
+      }
+    },
+    {
+      "id": "chair21",
+      "name": "chair21",
+      "room_id": "cafe",
+      "symbol": "c",
+      "position": {
+        "x": 64,
+        "y": 15
+      }
+    },
+    {
+      "id": "chair22",
+      "name": "chair22",
+      "room_id": "cafe",
+      "symbol": "c",
+      "position": {
+        "x": 64,
+        "y": 16
+      }
+    },
+    {
+      "id": "chair23",
+      "name": "chair23",
+      "room_id": "cafe",
+      "symbol": "c",
+      "position": {
+        "x": 66,
+        "y": 16
+      }
+    },
+    {
+      "id": "chair24",
+      "name": "chair24",
+      "room_id": "cafe",
+      "symbol": "c",
+      "position": {
+        "x": 66,
+        "y": 15
+      }
+    },
+    {
+      "id": "fruit1",
+      "name": "fruit1",
+      "room_id": "market",
+      "symbol": "f",
+      "position": {
+        "x": 59,
+        "y": 3
+      }
+    },
+    {
+      "id": "fruit2",
+      "name": "fruit2",
+      "room_id": "market",
+      "symbol": "f",
+      "position": {
+        "x": 60,
+        "y": 3
+      }
+    },
+    {
+      "id": "veg1",
+      "name": "veg1",
+      "room_id": "market",
+      "symbol": "v",
+      "position": {
+        "x": 62,
+        "y": 3
+      }
+    },
+    {
+      "id": "veg2",
+      "name": "veg2",
+      "room_id": "market",
+      "symbol": "v",
+      "position": {
+        "x": 63,
+        "y": 3
       }
     }
   ]
