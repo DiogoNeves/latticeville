@@ -32,23 +32,13 @@
       }
     },
     {
-      "id": "park",
-      "name": "Park",
+      "id": "restaurant",
+      "name": "Restaurant",
       "bounds": {
-        "x": 2,
-        "y": 15,
-        "width": 24,
-        "height": 7
-      }
-    },
-    {
-      "id": "harbor",
-      "name": "Harbor",
-      "bounds": {
-        "x": 28,
-        "y": 15,
-        "width": 30,
-        "height": 7
+        "x": 33,
+        "y": 13,
+        "width": 10,
+        "height": 10
       }
     }
   ],
@@ -81,36 +71,6 @@
       "position": {
         "x": 45,
         "y": 4
-      }
-    },
-    {
-      "id": "tree",
-      "name": "Tree",
-      "room_id": "park",
-      "symbol": "T",
-      "position": {
-        "x": 8,
-        "y": 17
-      }
-    },
-    {
-      "id": "bench",
-      "name": "Bench",
-      "room_id": "park",
-      "symbol": "B",
-      "position": {
-        "x": 18,
-        "y": 18
-      }
-    },
-    {
-      "id": "boat",
-      "name": "Boat",
-      "room_id": "harbor",
-      "symbol": "B",
-      "position": {
-        "x": 42,
-        "y": 17
       }
     }
   ]
