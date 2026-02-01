@@ -60,6 +60,7 @@ class EditorState:
     input_buffer: str = ""
     pending_object_name: str | None = None
     pending_object_symbol: str | None = None
+    pending_object_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -218,6 +219,9 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
         elif state.input_mode == "object_color":
             table.add_row("Object color", state.input_buffer or "…")
             table.add_row("Colors", _color_options_label())
+        elif state.input_mode == "object_color_edit":
+            table.add_row("Edit color", state.input_buffer or "…")
+            table.add_row("Colors", _color_options_label())
     if state.pending_object_name and state.input_mode != "object_name":
         table.add_row("Pending obj", state.pending_object_name)
     if state.last_message:
@@ -271,6 +275,8 @@ def _handle_input(
         state.input_mode = None
         state.input_buffer = ""
         state.pending_object_name = None
+        state.pending_object_symbol = None
+        state.pending_object_id = None
         state.last_message = "Paint cleared."
         return
     if key in {"s", "S"}:
@@ -285,6 +291,13 @@ def _handle_input(
         _maybe_commit_selection(state, resources)
         return
     if key == " ":
+        obj = _object_for_point(resources.objects, state.cursor)
+        if obj:
+            state.input_mode = "object_color_edit"
+            state.input_buffer = ""
+            state.pending_object_id = obj.object_id
+            state.last_message = f"Edit color for {obj.name}."
+            return
         if state.brush:
             state.paint_enabled = not state.paint_enabled
             state.last_message = "Paint on." if state.paint_enabled else "Paint off."
@@ -297,6 +310,7 @@ def _handle_input(
         state.input_buffer = ""
         state.pending_object_name = None
         state.pending_object_symbol = None
+        state.pending_object_id = None
         state.last_message = "Enter object name."
         return
 
@@ -651,6 +665,18 @@ def _handle_text_input(
             state.pending_object_name = None
             state.pending_object_symbol = None
             return
+        if state.input_mode == "object_color_edit":
+            color = _color_from_buffer(state.input_buffer)
+            if color is None:
+                state.last_message = "Pick a valid color number."
+                return
+            if state.pending_object_id:
+                _update_object_color(resources, state.pending_object_id, color)
+                state.last_message = "Object color updated."
+            state.input_mode = None
+            state.input_buffer = ""
+            state.pending_object_id = None
+            return
     if key in {"BACKSPACE"}:
         state.input_buffer = state.input_buffer[:-1]
         return
@@ -658,6 +684,8 @@ def _handle_text_input(
         state.input_mode = None
         state.input_buffer = ""
         state.pending_object_name = None
+        state.pending_object_symbol = None
+        state.pending_object_id = None
         state.last_message = "Input cancelled."
         return
     if len(key) == 1 and key.isprintable():
@@ -700,6 +728,32 @@ def _create_object_at_cursor(
     )
     _update_resource_mtime(resources, "world_json_mtime")
     state.last_message = f"Placed {name}."
+
+
+def _update_object_color(
+    resources: EditorResources, object_id: str, color: str
+) -> None:
+    payload = json.loads(resources.world_json_path.read_text(encoding="utf-8"))
+    objects = payload.get("objects", [])
+    for obj in objects:
+        if obj.get("id") == object_id:
+            obj["color"] = color
+            break
+    payload["objects"] = objects
+    resources.world_json_path.write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
+    if object_id in resources.objects:
+        obj_state = resources.objects[object_id]
+        resources.objects[object_id] = ObjectState(
+            object_id=obj_state.object_id,
+            name=obj_state.name,
+            room_id=obj_state.room_id,
+            symbol=obj_state.symbol,
+            position=obj_state.position,
+            color=color,
+        )
+    _update_resource_mtime(resources, "world_json_mtime")
 
 
 def _slugify(name: str) -> str:
