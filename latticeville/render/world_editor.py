@@ -20,6 +20,7 @@ from latticeville.render.terminal_input import raw_terminal, read_key
 from latticeville.render.world_map import (
     AGENT_STYLE,
     OBJECT_STYLE,
+    ROOM_BORDER_STYLE,
     TILE_STYLES,
     compute_viewport,
     render_map_lines,
@@ -133,6 +134,7 @@ def _render_world_tree(
     state: EditorState, resources: EditorResources
 ) -> RenderableType:
     wall_style = TILE_STYLES.get("#", "grey50")
+    room_style = ROOM_BORDER_STYLE
     tree = Tree(Text("World", style=wall_style), guide_style=wall_style)
     objects_by_room: dict[str, list[ObjectState]] = {}
     for obj in resources.objects.values():
@@ -146,7 +148,7 @@ def _render_world_tree(
         room_label = Text(
             f"{bounds.x},{bounds.y} {bounds.width}x{bounds.height} "
             f"{room.room_id} ({room.name})",
-            style=wall_style,
+            style=room_style,
         )
         room_node = tree.add(room_label)
         for obj in sorted(
