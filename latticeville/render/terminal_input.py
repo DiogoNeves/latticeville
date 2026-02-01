@@ -20,12 +20,12 @@ class InputEvent:
 
 
 def read_key() -> InputEvent | None:
-    if not sys.stdin.isatty():
-        return None
     ready, _, _ = select.select([sys.stdin], [], [], 0)
     if not ready:
         return None
     key = sys.stdin.read(1)
+    if key == "":
+        return None
     if key == "\x1b":
         seq = sys.stdin.read(1)
         if seq == "[":

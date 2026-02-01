@@ -60,11 +60,14 @@ def run_world_editor(*, base_dir: Path | None = None) -> None:
 
     with raw_terminal():
         with Live(console=console, auto_refresh=False, screen=True) as live:
-            while not state.should_exit:
-                _handle_input(state, resources)
-                renderable = _render_editor(state, resources, frame_size=console.size)
-                live.update(renderable, refresh=True)
-                time.sleep(0.03)
+            try:
+                while not state.should_exit:
+                    _handle_input(state, resources)
+                    renderable = _render_editor(state, resources, frame_size=console.size)
+                    live.update(renderable, refresh=True)
+                    time.sleep(0.03)
+            except KeyboardInterrupt:
+                state.should_exit = True
 
 
 def _render_editor(
