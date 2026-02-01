@@ -394,9 +394,6 @@ def _selection_summary(state: EditorState, resources: EditorResources) -> Text:
     cursor = state.cursor
     room = _room_for_point(state.rooms, cursor)
     obj = _object_for_point(resources.objects, cursor)
-    room_label = room.name if room else "-"
-    obj_label = obj.name if obj else "-"
-
     path_parts = ["World"]
     if room:
         path_parts.append(room.name)
@@ -405,8 +402,7 @@ def _selection_summary(state: EditorState, resources: EditorResources) -> Text:
     path = " / ".join(path_parts)
 
     return Text(
-        f"Cursor: {cursor[0]}, {cursor[1]} | Room: {room_label} | "
-        f"Object: {obj_label} | Path: {path}",
+        f"Cursor: {cursor[0]}, {cursor[1]} | Path: {path}",
         style="bold",
     )
 
