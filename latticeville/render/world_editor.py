@@ -61,6 +61,7 @@ class EditorState:
     pending_object_name: str | None = None
     pending_object_symbol: str | None = None
     pending_object_id: str | None = None
+    unsaved_rooms: bool = False
 
 
 @dataclass(frozen=True)
@@ -222,6 +223,8 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
         elif state.input_mode == "object_color_edit":
             table.add_row("Edit color", state.input_buffer or "…")
             table.add_row("Colors", _color_options_label())
+        elif state.input_mode == "confirm_quit":
+            table.add_row("Quit?", state.input_buffer or "y/n")
     if state.pending_object_name and state.input_mode != "object_name":
         table.add_row("Pending obj", state.pending_object_name)
     if state.last_message:
@@ -267,7 +270,12 @@ def _handle_input(
         return
 
     if key in {"q", "Q"}:
-        state.should_exit = True
+        if state.unsaved_rooms:
+            state.input_mode = "confirm_quit"
+            state.input_buffer = ""
+            state.last_message = "Unsaved rooms. Quit? (y/n)"
+        else:
+            state.should_exit = True
         return
     if key in {"c", "C"}:
         state.paint_enabled = False
@@ -416,6 +424,7 @@ def _maybe_commit_selection(state: EditorState, resources: EditorResources) -> N
     name = f"Room {len(state.rooms) + 1}"
     state.rooms.append(RoomDef(room_id=room_id, name=name, bounds=bounds))
     _apply_room_to_map(resources, bounds)
+    state.unsaved_rooms = True
     state.selection_start = None
     state.selection_end = None
     state.last_message = f"Added {name} and fenced map."
@@ -466,6 +475,7 @@ def _save_rooms(state: EditorState, resources: EditorResources) -> None:
         json.dumps(payload, indent=2) + "\n", encoding="utf-8"
     )
     _update_resource_mtime(resources, "world_json_mtime")
+    state.unsaved_rooms = False
     state.last_message = "Saved to world.json."
 
 
@@ -532,6 +542,7 @@ def _maybe_reload_resources(
     state.rooms = [
         RoomDef(room.id, room.name, room.bounds) for room in new_resources.config.rooms
     ]
+    state.unsaved_rooms = False
     state.cursor = _clamp_point(state.cursor, new_resources.world_map)
     if state.selection_start:
         state.selection_start = _clamp_point(state.selection_start, new_resources.world_map)
@@ -616,6 +627,9 @@ def _erase_tile(state: EditorState, resources: EditorResources) -> None:
     x, y = state.cursor
     if not (0 <= x < resources.world_map.width and 0 <= y < resources.world_map.height):
         return
+    obj = _object_for_point(resources.objects, state.cursor)
+    if obj:
+        _delete_object(resources, obj.object_id)
     current = resources.world_map.lines[y][x]
     if current == "#":
         replacement = " "
@@ -634,6 +648,14 @@ def _handle_text_input(
     state: EditorState, resources: EditorResources, key: str
 ) -> None:
     if key in {"ENTER"}:
+        if state.input_mode == "confirm_quit":
+            if state.input_buffer.strip().lower() == "y":
+                state.should_exit = True
+            else:
+                state.last_message = "Quit cancelled."
+            state.input_mode = None
+            state.input_buffer = ""
+            return
         if state.input_mode == "object_name":
             name = state.input_buffer.strip()
             if not name:
@@ -687,6 +709,10 @@ def _handle_text_input(
         state.pending_object_symbol = None
         state.pending_object_id = None
         state.last_message = "Input cancelled."
+        return
+    if state.input_mode == "confirm_quit":
+        if key.lower() in {"y", "n"}:
+            state.input_buffer = key.lower()
         return
     if len(key) == 1 and key.isprintable():
         state.input_buffer += key
@@ -753,6 +779,17 @@ def _update_object_color(
             position=obj_state.position,
             color=color,
         )
+    _update_resource_mtime(resources, "world_json_mtime")
+
+
+def _delete_object(resources: EditorResources, object_id: str) -> None:
+    payload = json.loads(resources.world_json_path.read_text(encoding="utf-8"))
+    objects = payload.get("objects", [])
+    payload["objects"] = [obj for obj in objects if obj.get("id") != object_id]
+    resources.world_json_path.write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
+    resources.objects.pop(object_id, None)
     _update_resource_mtime(resources, "world_json_mtime")
 
 
