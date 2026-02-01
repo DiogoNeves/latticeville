@@ -12,6 +12,7 @@ from rich.console import Console, Group, RenderableType
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
+from rich.tree import Tree
 from rich.text import Text
 from rich.live import Live
 
@@ -21,7 +22,7 @@ from latticeville.sim.world_loader import WorldConfig, WorldPaths, load_world_co
 from latticeville.sim.world_state import Bounds, ObjectState, WorldMap
 
 
-LEFT_WIDTH = 30
+LEFT_WIDTH = 44
 RIGHT_WIDTH = 36
 
 
@@ -102,13 +103,14 @@ def _render_editor(
     )
     map_panel = Align.center(Group(*lines), vertical="middle")
 
-    left = _render_rooms_panel(state)
+    left = _render_world_tree(state, resources)
     right = _render_editor_panel(state)
+    center = _render_center_panel(state, resources, map_panel)
 
     layout = Layout()
     layout.split_row(
-        Layout(Panel(left, title="Rooms"), size=LEFT_WIDTH),
-        Layout(Panel(map_panel, title="World"), ratio=1),
+        Layout(Panel(left, title="World Tree"), size=LEFT_WIDTH),
+        Layout(center, ratio=1),
         Layout(Panel(right, title="Editor"), size=RIGHT_WIDTH),
     )
 
@@ -120,17 +122,29 @@ def _render_editor(
     return wrapper
 
 
-def _render_rooms_panel(state: EditorState) -> RenderableType:
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("Room")
-    table.add_column("Bounds")
+def _render_world_tree(
+    state: EditorState, resources: EditorResources
+) -> RenderableType:
+    tree = Tree("World", guide_style="grey50")
+    objects_by_room: dict[str, list[ObjectState]] = {}
+    for obj in resources.objects.values():
+        objects_by_room.setdefault(obj.room_id or "", []).append(obj)
+
     for room in state.rooms:
         bounds = room.bounds
-        label = f"{bounds.x},{bounds.y} {bounds.width}x{bounds.height}"
-        table.add_row(room.name, label)
+        room_label = (
+            f"{bounds.x},{bounds.y} {bounds.width}x{bounds.height} "
+            f"{room.room_id} ({room.name})"
+        )
+        room_node = tree.add(room_label)
+        for obj in sorted(
+            objects_by_room.get(room.room_id, []), key=lambda o: o.object_id
+        ):
+            room_node.add(f"{obj.object_id} ({obj.name})")
+
     if not state.rooms:
-        table.add_row("-", "-")
-    return table
+        tree.add("No rooms defined")
+    return tree
 
 
 def _render_editor_panel(state: EditorState) -> RenderableType:
@@ -192,6 +206,19 @@ def _handle_input(state: EditorState, resources: EditorResources) -> None:
     if key in {"UP", "DOWN", "LEFT", "RIGHT"}:
         state.cursor = _move_cursor(state.cursor, key, resources.world_map)
         return
+
+
+def _render_center_panel(
+    state: EditorState, resources: EditorResources, map_panel: RenderableType
+) -> Layout:
+    selection = _selection_summary(state, resources)
+    bar = Panel(selection, title="Selection", padding=(0, 1))
+    layout = Layout()
+    layout.split_column(
+        Layout(bar, size=3),
+        Layout(Panel(map_panel, title="World"), ratio=1),
+    )
+    return layout
 
 
 def _move_cursor(
@@ -361,3 +388,47 @@ def _reload_label(last_reload_at: float | None) -> str:
         return "reload: -"
     stamp = time.strftime("%H:%M:%S", time.localtime(last_reload_at))
     return f"reload: {stamp}"
+
+
+def _selection_summary(state: EditorState, resources: EditorResources) -> Text:
+    cursor = state.cursor
+    room = _room_for_point(state.rooms, cursor)
+    obj = _object_for_point(resources.objects, cursor)
+    room_label = room.name if room else "-"
+    obj_label = obj.name if obj else "-"
+
+    path_parts = ["World"]
+    if room:
+        path_parts.append(room.name)
+    if obj:
+        path_parts.append(obj.name)
+    path = " / ".join(path_parts)
+
+    return Text(
+        f"Cursor: {cursor[0]}, {cursor[1]} | Room: {room_label} | "
+        f"Object: {obj_label} | Path: {path}",
+        style="bold",
+    )
+
+
+def _room_for_point(
+    rooms: list[RoomDef], point: tuple[int, int]
+) -> RoomDef | None:
+    x, y = point
+    for room in rooms:
+        bounds = room.bounds
+        if (
+            bounds.x <= x < bounds.x + bounds.width
+            and bounds.y <= y < bounds.y + bounds.height
+        ):
+            return room
+    return None
+
+
+def _object_for_point(
+    objects: dict[str, ObjectState], point: tuple[int, int]
+) -> ObjectState | None:
+    for obj in objects.values():
+        if obj.position == point:
+            return obj
+    return None
