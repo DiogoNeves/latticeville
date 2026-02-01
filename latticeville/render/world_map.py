@@ -19,6 +19,7 @@ TILE_STYLES = {
     "=": "yellow",
     "~": "blue",
     "^": "red",
+    "-": "blue",
 }
 
 OBJECT_STYLE = "bright_yellow"
