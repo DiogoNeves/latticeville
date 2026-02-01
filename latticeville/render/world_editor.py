@@ -230,7 +230,7 @@ def _handle_input(state: EditorState, resources: EditorResources) -> None:
         return
     if key in {"b", "B"}:
         state.selection_end = state.cursor
-        _maybe_commit_selection(state)
+        _maybe_commit_selection(state, resources)
         return
 
     if key in {"UP", "DOWN", "LEFT", "RIGHT"}:
@@ -268,16 +268,17 @@ def _move_cursor(
     return (x, y)
 
 
-def _maybe_commit_selection(state: EditorState) -> None:
+def _maybe_commit_selection(state: EditorState, resources: EditorResources) -> None:
     if state.selection_start is None or state.selection_end is None:
         return
     bounds = _normalize_bounds(state.selection_start, state.selection_end)
     room_id = _next_room_id(state.rooms)
     name = f"Room {len(state.rooms) + 1}"
     state.rooms.append(RoomDef(room_id=room_id, name=name, bounds=bounds))
+    _apply_room_to_map(resources, bounds)
     state.selection_start = None
     state.selection_end = None
-    state.last_message = f"Added {name}."
+    state.last_message = f"Added {name} and fenced map."
 
 
 def _normalize_bounds(
@@ -324,6 +325,7 @@ def _save_rooms(state: EditorState, resources: EditorResources) -> None:
     resources.world_json_path.write_text(
         json.dumps(payload, indent=2) + "\n", encoding="utf-8"
     )
+    _update_resource_mtime(resources, "world_json_mtime")
     state.last_message = "Saved to world.json."
 
 
@@ -411,6 +413,48 @@ def _path_mtime(path: Path) -> float | None:
         return path.stat().st_mtime
     except FileNotFoundError:
         return None
+
+
+def _update_resource_mtime(
+    resources: EditorResources, field_name: str
+) -> None:
+    if field_name == "world_json_mtime":
+        mtime = _path_mtime(resources.world_json_path)
+    elif field_name == "map_mtime":
+        mtime = _path_mtime(resources.map_path)
+    else:
+        return
+    object.__setattr__(resources, field_name, mtime)
+
+
+def _apply_room_to_map(resources: EditorResources, bounds: Bounds) -> None:
+    grid = [list(line) for line in resources.world_map.lines]
+    width = resources.world_map.width
+    height = resources.world_map.height
+    x0 = max(0, bounds.x)
+    y0 = max(0, bounds.y)
+    x1 = min(width - 1, bounds.x + bounds.width - 1)
+    y1 = min(height - 1, bounds.y + bounds.height - 1)
+
+    for x in range(x0, x1 + 1):
+        if 0 <= y0 < height:
+            grid[y0][x] = "#"
+        if 0 <= y1 < height:
+            grid[y1][x] = "#"
+    for y in range(y0, y1 + 1):
+        if 0 <= x0 < width:
+            grid[y][x0] = "#"
+        if 0 <= x1 < width:
+            grid[y][x1] = "#"
+
+    for y in range(y0 + 1, y1):
+        for x in range(x0 + 1, x1):
+            grid[y][x] = "."
+
+    updated = ["".join(row) for row in grid]
+    resources.world_map.lines[:] = updated
+    resources.map_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+    _update_resource_mtime(resources, "map_mtime")
 
 
 def _reload_label(last_reload_at: float | None) -> str:
