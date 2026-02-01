@@ -12,6 +12,7 @@ from rich.table import Table
 from rich.text import Text
 
 from latticeville.sim.contracts import TickPayload
+from latticeville.sim.world_utils import resolve_area_name
 
 
 def render_tick(payload: TickPayload, *, max_events: int = 5) -> RenderableType:
@@ -37,8 +38,8 @@ def _render_locations(payload: TickPayload) -> RenderableType:
     for node in payload.state.world.nodes.values():
         if node.type != "agent":
             continue
-        location = payload.state.world.nodes.get(node.parent_id or "")
-        table.add_row(node.name, location.name if location else "Unknown")
+        location = resolve_area_name(payload.state.world, node.id)
+        table.add_row(node.name, location or "Unknown")
     return table
 
 
@@ -107,7 +108,13 @@ def _render_plan_summary(payload: TickPayload) -> RenderableType:
     table.add_column("Field")
     table.add_column("Value")
     table.add_row("Agent", summary.get("agent_id", ""))
-    table.add_row("Window", f"{summary.get('start_tick')}–{summary.get('end_tick')}")
+    time_window = summary.get("time_window")
+    if time_window:
+        table.add_row("Window", time_window)
+    else:
+        table.add_row(
+            "Window", f"{summary.get('start_tick')}–{summary.get('end_tick')}"
+        )
     table.add_row("Location", summary.get("location", ""))
     table.add_row("Description", summary.get("description", ""))
     return Panel(table, title="Plan Summary")

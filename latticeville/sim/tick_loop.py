@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import uuid4
 from typing import Iterable
 
 from latticeville.db.memory_log import append_memory_record
@@ -23,13 +24,23 @@ from latticeville.llm.prompts import (
     clamp_importance,
     parse_prompt_output,
     render_prompt,
+    summarize_statements,
 )
 from latticeville.sim.contracts import ActionKind, Event, StateSnapshot, TickPayload
 from latticeville.sim.memory import MemoryStream
 from latticeville.sim.movement import advance_movement, start_move
-from latticeville.sim.planning import PlanItem, build_day_plan, decompose_to_actions
+from latticeville.sim.planning import (
+    PlanHierarchy,
+    PlanItem,
+    TICKS_PER_HOUR,
+    build_day_plan,
+    decompose_to_actions,
+    decompose_to_hours,
+    format_time_window,
+)
 from latticeville.sim.reflection import ReflectionState, build_reflections
 from latticeville.sim.world_state import WorldState
+from latticeville.sim.world_utils import resolve_area_id
 
 
 def run_ticks(
@@ -49,25 +60,36 @@ def run_ticks(
     reflection_states = {
         agent_id: ReflectionState(threshold=10.0) for agent_id in state.agents.keys()
     }
-    plan_cache: dict[str, list[PlanItem]] = {}
+    plan_cache: dict[str, PlanHierarchy] = {}
+    dialogue_histories: dict[tuple[str, str], list[str]] = {}
     step_count = 0
     while ticks is None or step_count < ticks:
         world_snapshot = state.world.model_copy(deep=True)
         snapshot_locations = {
             agent_id: agent.location_id for agent_id, agent in state.agents.items()
         }
+        tick_id = state.tick + 1
 
         actions = {}
+        plan_steps: dict[str, str | None] = {}
         for agent_id in sorted(state.agents.keys()):
             agent = state.agents[agent_id]
             agent.location_id = snapshot_locations[agent_id]
             valid_targets = build_valid_targets(
                 world_snapshot, agent=agent, portals=state.portals
             )
+            plan_step = None
+            if agent_id in plan_cache:
+                for item in plan_cache[agent_id].actions:
+                    if item.start_tick <= tick_id < item.end_tick:
+                        plan_step = item.description
+                        break
+            plan_steps[agent_id] = plan_step
             actions[agent_id] = llm_policy.decide_action(
                 world=world_snapshot,
                 agent=agent,
                 valid_targets=valid_targets,
+                plan_step=plan_step,
             )
 
         for agent_id, action in actions.items():
@@ -132,14 +154,46 @@ def run_ticks(
             say_event: Event | None = None
             action = actions.get(agent_id)
             if action and action.kind == ActionKind.SAY and action.say is not None:
+                target_id = action.say.to_agent_id
+                target_name = (
+                    state.agents[target_id].name
+                    if target_id in state.agents
+                    else target_id
+                )
+                history = _dialogue_history(
+                    dialogue_histories,
+                    agent_id=agent_id,
+                    target_agent_id=target_id,
+                )
+                recent_memories = summarize_statements(
+                    [record.description for record in stream.records[-5:]],
+                    limit=5,
+                )
+                plan_context = plan_steps.get(agent_id)
                 utterance = _generate_dialogue(
                     llm_policy,
                     agent_name=agent.name,
-                    target_agent_id=action.say.to_agent_id,
+                    target_agent_id=target_id,
                     observation=f"{agent.name} is initiating a conversation.",
+                    history=history,
+                    context=_dialogue_context(
+                        agent_name=agent.name,
+                        target_agent_name=target_name,
+                        observation=observations[0] if observations else "",
+                        memory_context=recent_memories,
+                        plan_context=plan_context,
+                    ),
                 )
                 if utterance:
                     action.say.utterance = utterance
+                    _record_dialogue(
+                        dialogue_histories,
+                        agent_id=agent_id,
+                        agent_name=agent.name,
+                        target_agent_id=target_id,
+                        target_agent_name=target_name,
+                        utterance=utterance,
+                    )
                 say_desc = (
                     f"{agent.name} says to {action.say.to_agent_id}: "
                     f'"{action.say.utterance}".'
@@ -198,17 +252,19 @@ def run_ticks(
                 events.append(say_event)
 
             if agent_id not in plan_cache:
-                day_plan = _build_day_plan(llm_policy, agent.name, tick_id)
-                decomposed = _decompose_plan(llm_policy, day_plan)
-                plan_cache[agent_id] = decomposed
-                for item in day_plan:
+                hierarchy = _build_plan_hierarchy(
+                    llm_policy, agent.name, tick_id, context=None
+                )
+                plan_cache[agent_id] = hierarchy
+                for item in hierarchy.day:
+                    plan_text = _plan_memory_text(item)
                     plan_importance = _score_importance(
                         llm_policy,
-                        memory_text=item.description,
+                        memory_text=plan_text,
                         memory_type="plan",
                     )
                     plan_record = stream.append(
-                        description=item.description,
+                        description=plan_text,
                         created_at=tick_id,
                         importance=plan_importance,
                         type="plan",
@@ -220,11 +276,7 @@ def run_ticks(
                             record=plan_record,
                         )
 
-            active_plan = None
-            for item in plan_cache[agent_id]:
-                if item.start_tick <= tick_id < item.end_tick:
-                    active_plan = item
-                    break
+            active_plan = _active_plan(plan_cache[agent_id].actions, tick_id)
             if active_plan:
                 memory_events.append(
                     Event(
@@ -233,8 +285,12 @@ def run_ticks(
                             "agent_id": agent_id,
                             "start_tick": active_plan.start_tick,
                             "end_tick": active_plan.end_tick,
+                            "time_window": format_time_window(
+                                active_plan.start_tick, active_plan.end_tick
+                            ),
                             "location": active_plan.location,
                             "description": active_plan.description,
+                            "level": active_plan.level,
                         },
                     )
                 )
@@ -266,22 +322,22 @@ def run_ticks(
                     append_memory_record(
                         memory_log_path, agent_id=agent_id, record=reaction_record
                     )
-                day_plan = _build_day_plan(
+                hierarchy = _build_plan_hierarchy(
                     llm_policy,
                     agent.name,
                     tick_id,
                     context=react_output.reaction,
                 )
-                decomposed = _decompose_plan(llm_policy, day_plan)
-                plan_cache[agent_id] = decomposed
-                for item in day_plan:
+                plan_cache[agent_id] = hierarchy
+                for item in hierarchy.day:
+                    plan_text = _plan_memory_text(item)
                     plan_importance = _score_importance(
                         llm_policy,
-                        memory_text=item.description,
+                        memory_text=plan_text,
                         memory_type="plan",
                     )
                     plan_record = stream.append(
-                        description=item.description,
+                        description=plan_text,
                         created_at=tick_id,
                         importance=plan_importance,
                         type="plan",
@@ -315,12 +371,14 @@ def run_ticks(
                     agent_name=agent.name,
                     supporting=[result.record for result in retrieved],
                 )
+                reflection_state.reset()
                 for description, links in insights:
                     reflection_importance = _score_importance(
                         llm_policy,
                         memory_text=description,
                         memory_type="reflection",
                     )
+                    reflection_state.record_importance(reflection_importance)
                     reflection_record = stream.append(
                         description=description,
                         created_at=tick_id,
@@ -334,7 +392,6 @@ def run_ticks(
                             agent_id=agent_id,
                             record=reflection_record,
                         )
-                reflection_state.reset()
                 memory_events.append(
                     Event(
                         kind="REFLECTION_SUMMARY",
@@ -416,11 +473,17 @@ def _build_day_plan(
     )
     if output and getattr(output, "items", None):
         specs = [PlanItemSpec.model_validate(item) for item in output.items]
-        return _specs_to_plan(specs, start_tick=start_tick)
+        return _specs_to_plan(specs, start_tick=start_tick, level="day")
     return build_day_plan(agent_name, start_tick=start_tick)
 
 
-def _decompose_plan(policy: LLMPolicy, plan: list[PlanItem]) -> list[PlanItem]:
+def _decompose_plan(
+    policy: LLMPolicy,
+    plan: list[PlanItem],
+    *,
+    chunk_size: int,
+    level: str,
+) -> list[PlanItem]:
     specs = [
         PlanItemSpec(
             description=item.description,
@@ -432,12 +495,18 @@ def _decompose_plan(policy: LLMPolicy, plan: list[PlanItem]) -> list[PlanItem]:
     output = _run_prompt(
         policy,
         PromptId.PLAN_DECOMPOSE,
-        PlanDecomposeInput(items=specs, chunk_size=1),
+        PlanDecomposeInput(items=specs, chunk_size=chunk_size),
     )
     if output and getattr(output, "items", None):
         decomposed_specs = [PlanItemSpec.model_validate(item) for item in output.items]
-        return _specs_to_plan(decomposed_specs, start_tick=plan[0].start_tick)
-    return decompose_to_actions(plan)
+        return _specs_to_plan(
+            decomposed_specs,
+            start_tick=plan[0].start_tick,
+            level=level,
+            parent_plan=plan,
+        )
+    fallback = decompose_to_hours(plan) if level == "hour" else decompose_to_actions(plan)
+    return _assign_parent_ids(fallback, plan)
 
 
 def _check_reaction(
@@ -466,6 +535,8 @@ def _generate_dialogue(
     agent_name: str,
     target_agent_id: str,
     observation: str,
+    history: list[str],
+    context: str | None,
 ) -> str | None:
     output = _run_prompt(
         policy,
@@ -473,8 +544,8 @@ def _generate_dialogue(
         DialogueInput(
             agent_name=agent_name,
             observation=observation,
-            context=f"Speaking to {target_agent_id}.",
-            history=[],
+            context=context or f"Speaking to {target_agent_id}.",
+            history=history,
         ),
     )
     if output and getattr(output, "utterance", None):
@@ -519,17 +590,27 @@ def _build_reflection_insights(
     )
 
 
-def _specs_to_plan(specs: list[PlanItemSpec], *, start_tick: int) -> list[PlanItem]:
+def _specs_to_plan(
+    specs: list[PlanItemSpec],
+    *,
+    start_tick: int,
+    level: str,
+    parent_plan: list[PlanItem] | None = None,
+) -> list[PlanItem]:
     plan: list[PlanItem] = []
     current = start_tick
     for spec in specs:
         duration = max(1, spec.duration)
+        parent_id = _parent_id_for_tick(parent_plan, current)
         plan.append(
             PlanItem(
+                plan_id=_new_plan_id(),
                 start_tick=current,
                 end_tick=current + duration,
                 location=spec.location,
                 description=spec.description,
+                level=level,
+                parent_id=parent_id,
             )
         )
         current += duration
@@ -544,10 +625,84 @@ def _map_supports_to_links(supports: list[int], records) -> list[str]:
     return links
 
 
+def _build_plan_hierarchy(
+    policy: LLMPolicy,
+    agent_name: str,
+    start_tick: int,
+    *,
+    context: str | None,
+) -> PlanHierarchy:
+    day_plan = _build_day_plan(
+        policy, agent_name=agent_name, start_tick=start_tick, context=context
+    )
+    if not day_plan:
+        return PlanHierarchy(day=[], hours=[], actions=[])
+    hour_plan = _decompose_plan(
+        policy, day_plan, chunk_size=TICKS_PER_HOUR, level="hour"
+    )
+    if not hour_plan:
+        return PlanHierarchy(day=day_plan, hours=[], actions=[])
+    action_plan = _decompose_plan(policy, hour_plan, chunk_size=1, level="action")
+    return PlanHierarchy(day=day_plan, hours=hour_plan, actions=action_plan)
+
+
+def _active_plan(plan: list[PlanItem], tick_id: int) -> PlanItem | None:
+    for item in plan:
+        if item.start_tick <= tick_id < item.end_tick:
+            return item
+    return None
+
+
+def _plan_memory_text(item: PlanItem) -> str:
+    window = format_time_window(item.start_tick, item.end_tick)
+    return f"[{item.level}] {item.description} ({window} @ {item.location})"
+
+
+def _new_plan_id() -> str:
+    return uuid4().hex
+
+
+def _parent_id_for_tick(
+    parent_plan: list[PlanItem] | None, tick_id: int
+) -> str | None:
+    if not parent_plan:
+        return None
+    for parent in parent_plan:
+        if parent.start_tick <= tick_id < parent.end_tick:
+            return parent.plan_id
+    return None
+
+
+def _assign_parent_ids(
+    plan: list[PlanItem], parent_plan: list[PlanItem]
+) -> list[PlanItem]:
+    if not parent_plan:
+        return plan
+    updated: list[PlanItem] = []
+    for item in plan:
+        parent_id = _parent_id_for_tick(parent_plan, item.start_tick)
+        if parent_id == item.parent_id:
+            updated.append(item)
+        else:
+            updated.append(
+                PlanItem(
+                    plan_id=item.plan_id,
+                    start_tick=item.start_tick,
+                    end_tick=item.end_tick,
+                    location=item.location,
+                    description=item.description,
+                    level=item.level,
+                    parent_id=parent_id,
+                )
+            )
+    return updated
+
+
 def _visible_agents(world, agent) -> list[str]:
     visible = []
+    agent_area = resolve_area_id(world, agent.location_id) or agent.location_id
     for node in world.nodes.values():
-        if node.type == "agent" and node.parent_id == agent.location_id:
+        if node.type == "agent" and resolve_area_id(world, node.id) == agent_area:
             if node.id != agent.agent_id:
                 visible.append(node.name)
     return visible
@@ -555,7 +710,62 @@ def _visible_agents(world, agent) -> list[str]:
 
 def _visible_objects(world, agent) -> list[str]:
     visible = []
+    agent_area = resolve_area_id(world, agent.location_id) or agent.location_id
     for node in world.nodes.values():
-        if node.type == "object" and node.parent_id == agent.location_id:
+        if node.type == "object" and resolve_area_id(world, node.id) == agent_area:
             visible.append(node.name)
     return visible
+
+
+def _dialogue_key(agent_id: str, target_agent_id: str) -> tuple[str, str]:
+    return tuple(sorted((agent_id, target_agent_id)))
+
+
+def _dialogue_history(
+    histories: dict[tuple[str, str], list[str]],
+    *,
+    agent_id: str,
+    target_agent_id: str,
+    limit: int = 6,
+) -> list[str]:
+    history = histories.get(_dialogue_key(agent_id, target_agent_id), [])
+    if len(history) <= limit:
+        return list(history)
+    return list(history[-limit:])
+
+
+def _record_dialogue(
+    histories: dict[tuple[str, str], list[str]],
+    *,
+    agent_id: str,
+    agent_name: str,
+    target_agent_id: str,
+    target_agent_name: str,
+    utterance: str,
+    limit: int = 12,
+) -> None:
+    _ = target_agent_name
+    key = _dialogue_key(agent_id, target_agent_id)
+    history = histories.setdefault(key, [])
+    history.append(f"{agent_name}: {utterance}")
+    if len(history) > limit:
+        histories[key] = history[-limit:]
+
+
+def _dialogue_context(
+    *,
+    agent_name: str,
+    target_agent_name: str,
+    observation: str,
+    memory_context: str,
+    plan_context: str | None,
+) -> str:
+    parts = []
+    if observation:
+        parts.append(f"Observation: {observation}")
+    if memory_context:
+        parts.append(f"Recent memories: {memory_context}")
+    if plan_context:
+        parts.append(f"Current plan: {plan_context}")
+    parts.append(f"Speaking to {target_agent_name}.")
+    return " ".join(parts)

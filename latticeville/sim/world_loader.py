@@ -41,6 +41,14 @@ class ObjectDef:
     symbol: str
     position: dict[str, int] | None
     tile: str | None
+    subarea_id: str | None
+
+
+@dataclass(frozen=True)
+class SubAreaDef:
+    id: str
+    name: str
+    area_id: str
 
 
 @dataclass(frozen=True)
@@ -55,6 +63,7 @@ class CharacterDef:
 @dataclass(frozen=True)
 class WorldConfig:
     areas: list[AreaDef]
+    subareas: list[SubAreaDef]
     objects: list[ObjectDef]
     characters: list[CharacterDef]
     overview_map_file: str | None
@@ -84,8 +93,18 @@ def load_world_config(*, paths: WorldPaths | None = None) -> WorldConfig:
             symbol=obj.get("symbol", "*"),
             position=obj.get("position"),
             tile=obj.get("tile"),
+            subarea_id=obj.get("subarea_id"),
         )
         for obj in world_data.get("objects", [])
+    ]
+    raw_subareas = world_data.get("subareas", [])
+    subareas = [
+        SubAreaDef(
+            id=sub["id"],
+            name=sub["name"],
+            area_id=sub["area_id"],
+        )
+        for sub in raw_subareas
     ]
     characters = [
         CharacterDef(
@@ -97,8 +116,10 @@ def load_world_config(*, paths: WorldPaths | None = None) -> WorldConfig:
         )
         for char in characters_data.get("characters", [])
     ]
+    subareas = _ensure_subareas(areas, subareas)
     return WorldConfig(
         areas=areas,
+        subareas=subareas,
         objects=objects,
         characters=characters,
         overview_map_file=world_data.get("overview_map_file"),
@@ -109,6 +130,7 @@ def load_world_state(*, paths: WorldPaths | None = None) -> WorldState:
     config = load_world_config(paths=paths)
     area_ids = {area.id for area in config.areas}
     _validate_portals(config.areas, area_ids)
+    subareas_by_area = _subareas_by_area(config.subareas)
 
     nodes: dict[str, WorldNode] = {
         "world": WorldNode(
@@ -129,19 +151,36 @@ def load_world_state(*, paths: WorldPaths | None = None) -> WorldState:
             children=[],
         )
 
+    for subarea in config.subareas:
+        if subarea.area_id not in area_ids:
+            raise ValueError(f"Subarea area_id {subarea.area_id} is not defined.")
+        nodes[subarea.id] = WorldNode(
+            id=subarea.id,
+            name=subarea.name,
+            type=NodeType.SUBAREA,
+            parent_id=subarea.area_id,
+            children=[],
+        )
+        nodes[subarea.area_id].children.append(subarea.id)
+
     for obj in config.objects:
         area_id = obj.area_id
         if area_id not in area_ids:
             raise ValueError(f"Object area_id {area_id} is not defined.")
+        subarea_id = _resolve_object_subarea(
+            obj,
+            subareas_by_area,
+            default_subarea=_default_subarea_id(subareas_by_area, area_id),
+        )
         obj_id = obj.id
         nodes[obj_id] = WorldNode(
             id=obj_id,
             name=obj.name,
             type=NodeType.OBJECT,
-            parent_id=area_id,
+            parent_id=subarea_id,
             children=[],
         )
-        nodes[area_id].children.append(obj_id)
+        nodes[subarea_id].children.append(obj_id)
 
     agents: dict[str, AgentState] = {}
     for char in config.characters:
@@ -185,3 +224,48 @@ def _validate_portals(areas: list[AreaDef], area_ids: set[str]) -> None:
                 raise ValueError(
                     f"Area {area.id} portal {digit} points to unknown {destination}."
                 )
+
+
+def _ensure_subareas(
+    areas: list[AreaDef], subareas: list[SubAreaDef]
+) -> list[SubAreaDef]:
+    by_area = _subareas_by_area(subareas)
+    ensured: list[SubAreaDef] = list(subareas)
+    for area in areas:
+        if by_area.get(area.id):
+            continue
+        ensured.append(
+            SubAreaDef(
+                id=f"{area.id}_core",
+                name=f"{area.name} Core",
+                area_id=area.id,
+            )
+        )
+    return ensured
+
+
+def _subareas_by_area(subareas: list[SubAreaDef]) -> dict[str, list[SubAreaDef]]:
+    grouped: dict[str, list[SubAreaDef]] = {}
+    for sub in subareas:
+        grouped.setdefault(sub.area_id, []).append(sub)
+    return grouped
+
+
+def _default_subarea_id(
+    subareas_by_area: dict[str, list[SubAreaDef]], area_id: str
+) -> str:
+    options = subareas_by_area.get(area_id)
+    if options:
+        return options[0].id
+    return f"{area_id}_core"
+
+
+def _resolve_object_subarea(
+    obj: ObjectDef,
+    subareas_by_area: dict[str, list[SubAreaDef]],
+    *,
+    default_subarea: str,
+) -> str:
+    if obj.subarea_id:
+        return obj.subarea_id
+    return default_subarea

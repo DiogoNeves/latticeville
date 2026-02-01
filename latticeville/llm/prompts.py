@@ -295,6 +295,17 @@ def clamp_importance(value: int) -> int:
 
 
 def extract_json(text: str) -> dict[str, Any] | None:
+    marker_start = "Input JSON:"
+    marker_end = "Output JSON:"
+    if marker_start in text and marker_end in text:
+        block = text.split(marker_start, 1)[1].split(marker_end, 1)[0].strip()
+        if block:
+            try:
+                loaded = json.loads(block)
+            except json.JSONDecodeError:
+                loaded = None
+            if isinstance(loaded, dict):
+                return loaded
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1 or end <= start:

@@ -13,6 +13,20 @@
       "symbol": "@",
       "start_area_id": "street",
       "patrol_route": ["street", "cafe"]
+    },
+    {
+      "id": "cleo",
+      "name": "Cleo",
+      "symbol": "@",
+      "start_area_id": "library",
+      "patrol_route": ["library", "street", "cafe"]
+    },
+    {
+      "id": "dax",
+      "name": "Dax",
+      "symbol": "@",
+      "start_area_id": "market",
+      "patrol_route": ["market", "harbor", "park"]
     }
   ]
 }

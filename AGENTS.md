@@ -187,3 +187,7 @@ _Note: As the codebase grows, add specific file examples here._
 - **Architecture decisions:** Propose plan and request review
 - **Breaking changes:** Discuss impact and get approval
 - **Unclear patterns:** Reference `thinking/spec.md` for design intent
+
+## Assistant Preferences
+
+- When presenting multiple numbered options, default to option 2 unless instructed otherwise.

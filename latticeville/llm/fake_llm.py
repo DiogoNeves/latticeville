@@ -10,7 +10,15 @@ from latticeville.sim.world_state import AgentState
 
 
 class FakeLLM(LLMPolicy):
-    def decide_action(self, *, world, agent: AgentState, valid_targets) -> Action:
+    def decide_action(
+        self,
+        *,
+        world,
+        agent: AgentState,
+        valid_targets,
+        plan_step: str | None = None,
+    ) -> Action:
+        _ = (world, valid_targets, plan_step)
         if len(agent.patrol_route) < 2:
             return Action(kind=ActionKind.IDLE)
 

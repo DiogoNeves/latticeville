@@ -1,29 +1,14 @@
-"""mlx-lm adapter for real local runs."""
+"""Prompt-driven LLM policy using deterministic fixtures."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from latticeville.llm.base import LLMConfig, LLMPolicy
-from latticeville.llm.prompts import (
-    ActInput,
-    PromptId,
-    parse_prompt_output,
-    render_prompt,
-)
+from latticeville.llm.fake_llm import FakeLLM
+from latticeville.llm.prompts import ActInput, PromptId, parse_prompt_output, render_prompt
 from latticeville.sim.contracts import Action, ActionKind, coerce_action
 from latticeville.sim.world_state import AgentState
 
 
-@dataclass
-class MlxLLM(LLMPolicy):
-    config: LLMConfig
-
-    def __post_init__(self) -> None:
-        from mlx_lm import load
-
-        self._model, self._tokenizer = load(self.config.model_id)
-
+class PromptLLM(FakeLLM):
     def decide_action(
         self,
         *,
@@ -48,15 +33,5 @@ class MlxLLM(LLMPolicy):
             return Action(kind=ActionKind.IDLE)
         return coerce_action(parsed, valid_targets)
 
-    def complete_prompt(self, *, prompt_id: str, prompt: str) -> str:
-        _ = prompt_id
-        return _generate(self._model, self._tokenizer, prompt)
 
-
-def _generate(model, tokenizer, prompt: str) -> str:
-    from mlx_lm import generate
-
-    return generate(model, tokenizer, prompt=prompt, max_tokens=256)
-
-
-__all__ = ["MlxLLM"]
+__all__ = ["PromptLLM"]

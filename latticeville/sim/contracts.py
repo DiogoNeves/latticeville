@@ -17,6 +17,7 @@ from pydantic import (
 
 class NodeType(str, Enum):
     AREA = "area"
+    SUBAREA = "subarea"
     OBJECT = "object"
     AGENT = "agent"
 

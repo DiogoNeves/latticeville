@@ -13,7 +13,7 @@ def test_main_viewer_renders() -> None:
     console = Console(width=100, record=True)
     console.print(renderable)
     output = console.export_text()
-    assert "Speech" in output
+    assert "Events" in output
     assert "World:" in output
     assert "Characters" in output
 

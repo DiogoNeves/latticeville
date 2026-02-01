@@ -8,7 +8,9 @@
       "overview_symbol": "S",
       "overview_anchor": { "x": 5, "y": 4 },
       "portals": {
-        "1": "cafe"
+        "1": "cafe",
+        "2": "market",
+        "3": "library"
       }
     },
     {
@@ -19,7 +21,8 @@
       "overview_anchor": { "x": 12, "y": 4 },
       "portals": {
         "1": "street",
-        "2": "park"
+        "2": "park",
+        "3": "market"
       }
     },
     {
@@ -29,7 +32,41 @@
       "overview_symbol": "P",
       "overview_anchor": { "x": 18, "y": 6 },
       "portals": {
-        "1": "cafe"
+        "1": "cafe",
+        "2": "harbor"
+      }
+    },
+    {
+      "id": "library",
+      "name": "Library",
+      "map_file": "library.map",
+      "overview_symbol": "L",
+      "overview_anchor": { "x": 5, "y": 2 },
+      "portals": {
+        "1": "street"
+      }
+    },
+    {
+      "id": "market",
+      "name": "Market",
+      "map_file": "market.map",
+      "overview_symbol": "M",
+      "overview_anchor": { "x": 12, "y": 2 },
+      "portals": {
+        "1": "street",
+        "2": "cafe",
+        "3": "harbor"
+      }
+    },
+    {
+      "id": "harbor",
+      "name": "Harbor",
+      "map_file": "harbor.map",
+      "overview_symbol": "H",
+      "overview_anchor": { "x": 18, "y": 7 },
+      "portals": {
+        "1": "park",
+        "2": "market"
       }
     }
   ],
@@ -54,6 +91,27 @@
       "area_id": "cafe",
       "symbol": "*",
       "position": { "x": 5, "y": 2 }
+    },
+    {
+      "id": "shelf",
+      "name": "Shelf",
+      "area_id": "library",
+      "symbol": "S",
+      "position": { "x": 4, "y": 2 }
+    },
+    {
+      "id": "stall",
+      "name": "Stall",
+      "area_id": "market",
+      "symbol": "K",
+      "position": { "x": 8, "y": 2 }
+    },
+    {
+      "id": "boat",
+      "name": "Boat",
+      "area_id": "harbor",
+      "symbol": "B",
+      "position": { "x": 8, "y": 1 }
     }
   ]
 }

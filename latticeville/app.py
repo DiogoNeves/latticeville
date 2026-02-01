@@ -14,12 +14,13 @@ from latticeville.llm.base import LLMConfig, LLMPolicy
 from latticeville.llm.embedder import Embedder, FakeEmbedder, QwenEmbedder
 from latticeville.llm.fake_llm import FakeLLM
 from latticeville.llm.mlx_llm import MlxLLM
+from latticeville.llm.prompt_llm import PromptLLM
 from latticeville.render.main_viewer import run_main_viewer
 from latticeville.sim.tick_loop import run_ticks
 from latticeville.sim.world_state import build_tiny_world
 from latticeville.sim.world_loader import load_world_config
 
-DEFAULT_LLM_BACKEND = "fake"
+DEFAULT_LLM_BACKEND = "prompt"
 DEFAULT_MODEL_ID = "mlx-community/Qwen3-3B-4bit"
 DEFAULT_EMBEDDER = "fake"
 DEFAULT_EMBED_MODEL_ID = "Qwen/Qwen3-Embedding-0.6B"
@@ -105,6 +106,8 @@ def _resolve_policy(llm_backend: str | None, model_id: str | None) -> LLMPolicy:
     if backend == "mlx":
         model = model_id or os.getenv("LATTICEVILLE_MODEL_ID") or DEFAULT_MODEL_ID
         return MlxLLM(config=LLMConfig(model_id=model))
+    if backend == "prompt":
+        return PromptLLM()
     return FakeLLM()
 
 

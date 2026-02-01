@@ -55,7 +55,7 @@ def main() -> None:
     parser.add_argument(
         "--llm",
         default=None,
-        help="LLM backend to use: fake or mlx (simulation mode only).",
+        help="LLM backend to use: prompt, fake, or mlx (simulation mode only).",
     )
     parser.add_argument(
         "--model-id",

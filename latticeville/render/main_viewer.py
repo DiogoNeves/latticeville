@@ -19,6 +19,7 @@ from rich.live import Live
 
 from latticeville.render.terminal_input import raw_terminal, read_key
 from latticeville.sim.contracts import TickPayload
+from latticeville.sim.world_utils import resolve_area_id, resolve_area_name
 from latticeville.sim.world_loader import WorldConfig, WorldPaths, load_world_config
 
 
@@ -35,10 +36,26 @@ class AreaMap:
 class MainViewerState:
     selected_agent_id: str | None = None
     speech_feed: deque[dict] = field(default_factory=lambda: deque(maxlen=20))
+    event_feed: dict[str, deque[dict]] = field(default_factory=dict)
     agent_positions: dict[str, tuple[str, int, int]] = field(default_factory=dict)
     character_hitboxes: list[tuple[int, int, str]] = field(default_factory=list)
     should_exit: bool = False
     view_mode: str = "local"
+    last_tick_seen: int | None = None
+
+
+@dataclass(frozen=True)
+class ViewerResources:
+    config: WorldConfig
+    area_maps: dict[str, AreaMap]
+    overview_map: AreaMap | None
+    objects_by_area: dict[str, list[dict]]
+
+
+@dataclass(frozen=True)
+class RenderFrame:
+    renderable: RenderableType
+    hitboxes: list[tuple[int, int, str]]
 
 
 TILE_STYLES = {
@@ -70,11 +87,7 @@ def run_main_viewer(
     base_dir: Path | None = None,
     tick_delay: float = 0.2,
 ) -> None:
-    config = config or load_world_config()
-    base_dir = base_dir or WorldPaths().base_dir
-    area_maps = _load_area_maps(config, base_dir)
-    overview_map = _load_overview_map(config, base_dir)
-    objects_by_area = _objects_by_area(config, area_maps)
+    resources = _load_viewer_resources(config=config, base_dir=base_dir)
     console = Console()
     state = MainViewerState()
 
@@ -83,59 +96,43 @@ def run_main_viewer(
             paused = False
             last_payload: TickPayload | None = None
             for payload in payloads:
+                _sync_state_for_payload(payload, state, resources)
                 paused = _handle_live_input(state, payload, paused)
                 if paused:
                     last_payload = payload
                     _render_and_update(
                         live,
                         payload,
-                        config,
-                        area_maps,
-                        overview_map,
-                        objects_by_area,
+                        resources,
                         state,
                     )
                     _pause_loop(
                         live,
                         payload,
-                        config,
-                        area_maps,
-                        overview_map,
-                        objects_by_area,
+                        resources,
                         state,
                     )
                     paused = False
                     continue
-                renderable = _render(
-                    payload, config, area_maps, overview_map, objects_by_area, state
-                )
+                renderable = _render_with_state(payload, resources, state)
                 last_payload = payload
                 live.update(_wrap_with_status(renderable), refresh=True)
                 if state.should_exit:
                     break
                 time.sleep(tick_delay)
             while last_payload is not None and not state.should_exit:
+                _sync_state_for_payload(last_payload, state, resources)
                 paused = _handle_live_input(state, last_payload, paused)
                 if paused:
                     _pause_loop(
                         live,
                         last_payload,
-                        config,
-                        area_maps,
-                        overview_map,
-                        objects_by_area,
+                        resources,
                         state,
                     )
                     paused = False
                     continue
-                renderable = _render(
-                    last_payload,
-                    config,
-                    area_maps,
-                    overview_map,
-                    objects_by_area,
-                    state,
-                )
+                renderable = _render_with_state(last_payload, resources, state)
                 live.update(_wrap_with_status(renderable), refresh=True)
                 time.sleep(tick_delay)
 
@@ -147,70 +144,63 @@ def render_main_view(
     base_dir: Path | None = None,
     state: MainViewerState | None = None,
 ) -> RenderableType:
-    config = config or load_world_config()
-    base_dir = base_dir or WorldPaths().base_dir
-    area_maps = _load_area_maps(config, base_dir)
-    overview_map = _load_overview_map(config, base_dir)
-    objects_by_area = _objects_by_area(config, area_maps)
+    resources = _load_viewer_resources(config=config, base_dir=base_dir)
     state = state or MainViewerState()
-    return _render(payload, config, area_maps, overview_map, objects_by_area, state)
+    _sync_state_for_payload(payload, state, resources)
+    return _render_with_state(payload, resources, state)
 
 
 # --- Private helpers ---
 
 
-def _render(
+def _render_frame(
     payload: TickPayload,
-    config: WorldConfig,
-    area_maps: dict[str, AreaMap],
-    overview_map: AreaMap | None,
-    objects_by_area: dict[str, list[dict]],
+    resources: ViewerResources,
     state: MainViewerState,
-) -> RenderableType:
-    agent_ids = _agent_ids(payload)
-    if state.selected_agent_id not in agent_ids:
-        state.selected_agent_id = agent_ids[0] if agent_ids else None
-
+) -> RenderFrame:
     selected_area = _agent_area(payload, state.selected_agent_id)
     if selected_area is None:
-        selected_area = next(iter(area_maps.keys()), "")
+        selected_area = next(iter(resources.area_maps.keys()), "")
 
-    _ingest_speech(payload, state)
-
-    left = _render_speech_feed(state, selected_agent=state.selected_agent_id)
-    if state.view_mode == "overview" and overview_map is not None:
+    left = _render_event_feed(state, selected_agent=state.selected_agent_id)
+    if state.view_mode == "overview" and resources.overview_map is not None:
         center = _render_overview_map(
             payload,
-            config,
-            overview_map,
-            state,
+            resources.config,
+            resources.overview_map,
             selected_area=selected_area,
         )
         title = "World: overview"
     else:
         center = _render_map(
-            payload,
-            config,
-            area_maps,
-            objects_by_area,
+            resources.area_maps,
+            resources.objects_by_area,
             state,
             selected_area=selected_area,
         )
         title = f"World: {selected_area}"
-    right = _render_right_panel(payload, state)
+    right, hitboxes = _render_right_panel(payload, state)
 
     layout = Layout()
     layout.split_row(
-        Layout(Panel(left, title="Speech"), ratio=2),
+        Layout(Panel(left, title="Events"), ratio=2),
         Layout(Panel(center, title=title), ratio=5),
         Layout(right, ratio=2),
     )
-    return layout
+    return RenderFrame(renderable=layout, hitboxes=hitboxes)
+
+
+def _render_with_state(
+    payload: TickPayload,
+    resources: ViewerResources,
+    state: MainViewerState,
+) -> RenderableType:
+    frame = _render_frame(payload, resources, state)
+    state.character_hitboxes = frame.hitboxes
+    return frame.renderable
 
 
 def _render_map(
-    payload: TickPayload,
-    config: WorldConfig,
     area_maps: dict[str, AreaMap],
     objects_by_area: dict[str, list[dict]],
     state: MainViewerState,
@@ -227,8 +217,7 @@ def _render_map(
             grid[y][x] = obj["symbol"]
             styles[y][x] = "bright_yellow"
 
-    agent_positions = _get_agent_positions(payload, area_maps, state)
-    for agent_id, (area_id, x, y) in agent_positions.items():
+    for agent_id, (area_id, x, y) in state.agent_positions.items():
         if area_id != selected_area:
             continue
         glyph = "@"
@@ -258,7 +247,6 @@ def _render_overview_map(
     payload: TickPayload,
     config: WorldConfig,
     overview_map: AreaMap,
-    state: MainViewerState,
     *,
     selected_area: str,
 ) -> RenderableType:
@@ -291,36 +279,27 @@ def _render_overview_map(
     return Align.center(Group(*lines), vertical="middle")
 
 
-def _render_speech_feed(
+def _render_event_feed(
     state: MainViewerState, *, selected_agent: str | None
 ) -> RenderableType:
     table = Table(show_header=True, header_style="bold")
-    table.add_column("Speaker")
-    table.add_column("To")
-    table.add_column("Utterance")
-    for event in state.speech_feed:
-        style = (
-            "bold"
-            if selected_agent in {event["agent_id"], event["to_agent_id"]}
-            else ""
-        )
-        table.add_row(
-            event["agent_id"],
-            event["to_agent_id"],
-            event["utterance"],
-            style=style,
-        )
-    if not state.speech_feed:
-        table.add_row("-", "-", "No speech yet.")
+    table.add_column("Tick", justify="right", width=6)
+    table.add_column("Event")
+    feed = state.event_feed.get(selected_agent or "", deque())
+    for entry in feed:
+        table.add_row(str(entry.get("tick", "")), entry.get("text", ""))
+    if not feed:
+        table.add_row("-", "No events yet.")
     return table
 
 
-def _render_right_panel(payload: TickPayload, state: MainViewerState) -> RenderableType:
+def _render_right_panel(
+    payload: TickPayload, state: MainViewerState
+) -> tuple[RenderableType, list[tuple[int, int, str]]]:
     agents = _agent_ids(payload)
     list_panel, hitboxes = _render_character_list(
         payload, agents, state.selected_agent_id
     )
-    state.character_hitboxes = hitboxes
     selected_panel = _render_selected_agent(payload, state.selected_agent_id)
 
     right = Layout()
@@ -333,7 +312,7 @@ def _render_right_panel(payload: TickPayload, state: MainViewerState) -> Rendera
         Layout(list_panel, size=list_height),
         Layout(selected_panel),
     )
-    return right
+    return right, hitboxes
 
 
 def _render_character_list(
@@ -365,9 +344,9 @@ def _render_selected_agent(
         table.add_row("Agent", "None")
         return table
     node = payload.state.world.nodes.get(agent_id)
-    area = payload.state.world.nodes.get(node.parent_id) if node else None
     table.add_row("Agent", node.name if node else agent_id)
-    table.add_row("Area", area.name if area else "Unknown")
+    area_name = resolve_area_name(payload.state.world, agent_id)
+    table.add_row("Area", area_name or "Unknown")
     belief = payload.state.beliefs.get(agent_id)
     if belief:
         area_names = sorted(
@@ -442,8 +421,7 @@ def _agent_ids(payload: TickPayload) -> list[str]:
 def _agent_area(payload: TickPayload, agent_id: str | None) -> str | None:
     if agent_id is None:
         return None
-    node = payload.state.world.nodes.get(agent_id)
-    return node.parent_id if node else None
+    return resolve_area_id(payload.state.world, agent_id)
 
 
 def _area_counts(payload: TickPayload) -> dict[str, int]:
@@ -470,10 +448,27 @@ def _ingest_speech(payload: TickPayload, state: MainViewerState) -> None:
         )
 
 
-def _get_agent_positions(
-    payload: TickPayload, area_maps: dict[str, AreaMap], state: MainViewerState
+def _ingest_events(payload: TickPayload, state: MainViewerState) -> None:
+    for event in payload.events or []:
+        agent_id = event.payload.get("agent_id")
+        if not agent_id:
+            continue
+        text = _format_event(payload, event)
+        if not text:
+            continue
+        feed = state.event_feed.get(agent_id)
+        if feed is None:
+            feed = deque(maxlen=40)
+            state.event_feed[agent_id] = feed
+        feed.append({"tick": payload.tick, "text": text})
+
+
+def _compute_agent_positions(
+    payload: TickPayload,
+    area_maps: dict[str, AreaMap],
+    previous: dict[str, tuple[str, int, int]],
 ) -> dict[str, tuple[str, int, int]]:
-    positions = dict(state.agent_positions)
+    positions = dict(previous)
     for agent_id in _agent_ids(payload):
         area_id = _agent_area(payload, agent_id) or next(iter(area_maps.keys()), "")
         area_map = area_maps.get(area_id)
@@ -490,7 +485,6 @@ def _get_agent_positions(
         else:
             x, y = 1, 1
         positions[key] = (area_id, x, y)
-    state.agent_positions = positions
     return positions
 
 
@@ -529,10 +523,6 @@ def _truncate(text: str, limit: int = 24) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 3] + "..."
-
-
-def _handle_input(state: MainViewerState, payload: TickPayload) -> None:
-    _handle_live_input(state, payload, paused=False)
 
 
 def map_character_click(
@@ -590,17 +580,13 @@ def _handle_live_input(
 def _pause_loop(
     live: Live,
     payload: TickPayload,
-    config: WorldConfig,
-    area_maps: dict[str, AreaMap],
-    overview_map: AreaMap | None,
-    objects_by_area: dict[str, list[dict]],
+    resources: ViewerResources,
     state: MainViewerState,
 ) -> None:
     while not state.should_exit:
+        _sync_state_for_payload(payload, state, resources)
         paused = _handle_live_input(state, payload, paused=True)
-        renderable = _render(
-            payload, config, area_maps, overview_map, objects_by_area, state
-        )
+        renderable = _render_with_state(payload, resources, state)
         live.update(_wrap_with_status(renderable, paused=True), refresh=True)
         if not paused:
             break
@@ -610,15 +596,10 @@ def _pause_loop(
 def _render_and_update(
     live: Live,
     payload: TickPayload,
-    config: WorldConfig,
-    area_maps: dict[str, AreaMap],
-    overview_map: AreaMap | None,
-    objects_by_area: dict[str, list[dict]],
+    resources: ViewerResources,
     state: MainViewerState,
 ) -> None:
-    renderable = _render(
-        payload, config, area_maps, overview_map, objects_by_area, state
-    )
+    renderable = _render_with_state(payload, resources, state)
     live.update(_wrap_with_status(renderable), refresh=True)
 
 
@@ -646,3 +627,82 @@ def _cycle(agent_ids: list[str], current: str | None, delta: int) -> str:
         return agent_ids[0]
     index = agent_ids.index(current)
     return agent_ids[(index + delta) % len(agent_ids)]
+
+
+def _load_viewer_resources(
+    *, config: WorldConfig | None, base_dir: Path | None
+) -> ViewerResources:
+    config = config or load_world_config()
+    base_dir = base_dir or WorldPaths().base_dir
+    area_maps = _load_area_maps(config, base_dir)
+    overview_map = _load_overview_map(config, base_dir)
+    objects_by_area = _objects_by_area(config, area_maps)
+    return ViewerResources(
+        config=config,
+        area_maps=area_maps,
+        overview_map=overview_map,
+        objects_by_area=objects_by_area,
+    )
+
+
+def _sync_state_for_payload(
+    payload: TickPayload,
+    state: MainViewerState,
+    resources: ViewerResources,
+) -> None:
+    agent_ids = _agent_ids(payload)
+    if state.selected_agent_id not in agent_ids:
+        state.selected_agent_id = agent_ids[0] if agent_ids else None
+    if state.last_tick_seen == payload.tick:
+        return
+    state.last_tick_seen = payload.tick
+    _ingest_speech(payload, state)
+    _ingest_events(payload, state)
+    state.agent_positions = _compute_agent_positions(
+        payload, resources.area_maps, state.agent_positions
+    )
+
+
+def _format_event(payload: TickPayload, event) -> str | None:
+    kind = event.kind
+    data = event.payload
+    agent_id = data.get("agent_id")
+    agent_name = _agent_name(payload, agent_id)
+    if kind == "MOVE":
+        from_id = data.get("from", "")
+        to_id = data.get("to", "")
+        return f"{agent_name} moved from {_area_name(payload, from_id)} to {_area_name(payload, to_id)}."
+    if kind == "SAY":
+        to_id = data.get("to_agent_id", "")
+        utterance = data.get("utterance", "")
+        return f'{agent_name} said to {_agent_name(payload, to_id)}: "{_truncate(utterance, 60)}"'
+    if kind == "PLAN_SUMMARY":
+        description = data.get("description", "")
+        location_id = data.get("location", "")
+        location = _area_name(payload, location_id)
+        time_window = data.get("time_window", "")
+        level = data.get("level", "action")
+        return (
+            f"Plan [{level}] ({time_window} @ {location}): "
+            f"{_truncate(description, 70)}"
+        )
+    if kind == "REFLECTION_SUMMARY":
+        count = data.get("count", 0)
+        items = data.get("items", [])
+        preview = _truncate(items[0], 70) if items else "No insights."
+        return f"Reflected ({count}): {preview}"
+    return None
+
+
+def _agent_name(payload: TickPayload, agent_id: str | None) -> str:
+    if not agent_id:
+        return "Unknown"
+    node = payload.state.world.nodes.get(agent_id)
+    return node.name if node else agent_id
+
+
+def _area_name(payload: TickPayload, area_id: str | None) -> str:
+    if not area_id:
+        return "Unknown"
+    name = resolve_area_name(payload.state.world, area_id)
+    return name if name else area_id
