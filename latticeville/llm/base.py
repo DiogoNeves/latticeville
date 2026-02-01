@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from latticeville.sim.contracts import Action, ValidTargets, WorldTree
-from latticeville.sim.movement import build_area_graph
 from latticeville.sim.world_state import AgentState
 from latticeville.sim.world_utils import resolve_area_id
 
@@ -37,8 +36,10 @@ def build_valid_targets(
     agent: AgentState,
     portals: dict[str, dict[str, str]] | None = None,
 ) -> ValidTargets:
-    graph = build_area_graph(world, portals=portals)
-    locations = set(graph.keys())
+    _ = portals
+    locations = {
+        node.id for node in world.nodes.values() if node.type == "area"
+    }
     agent_area = resolve_area_id(world, agent.location_id) or agent.location_id
     objects = {
         node.id

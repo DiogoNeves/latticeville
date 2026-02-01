@@ -34,19 +34,21 @@ Latticeville is a local-only, terminal-UI simulation of a tiny cyberpunk neon vi
 - `latticeville/db/` optionally holds persistence for memories and replay logs.
 - `latticeville/llm/` holds local LLM adapters and prompt helpers.
 
-## World Model (tree)
+## World Model (tree + grid)
 
 See [`latticeville_data_models_diagram.png`](./latticeville_data_models_diagram.png) for a visual overview of the data models and state representations.
 
-- World is a tree of areas and objects (root = world, areas can contain subareas or objects, objects are leaves).
-- Example: World → House (area) → Kitchen (subarea) → Stove (object).
+- World is represented in two synced forms:
+  - **Grid world**: a single ASCII map file for the entire world (walkable vs walls).
+  - **World tree**: a containment tree of areas → objects derived from the grid + bounding boxes.
+- Example: World → House (area) → Stove (object).
 - Each node has: `id`, `name`, `type` (`area`, `object`, `agent`), `parent_id`,
   and ordered `children`.
 - Agents live in the tree as leaf nodes with a current location (parent).
 - Each agent maintains a **personal subtree / belief view** for locations and objects it knows.
 - Agent belief views may diverge temporarily from the canonical world state (stale/partial), but follow the same structural schema (tree of nodes + containment).
   - Belief updates from perception are a **merge**: newly perceived nodes are merged into belief; for nodes present in both (same `id`), perceived/canonical fields **override** belief fields.
-- Perception uses the current area node and the **object leaf nodes** contained in that area.
+- Perception uses the agent's current **area** (resolved from its grid position) and the object leaf nodes contained in that area.
 - State transitions are deterministic given actions and the same initial state (non-determinism comes from LLM action generation).
   - Deterministic does **not** imply “physically accurate” under conflicting same-tick actions; it only implies reproducible outcomes.
 
@@ -72,6 +74,7 @@ See [`latticeville_data_models_diagram.png`](./latticeville_data_models_diagram.
    - Invalid actions are handled by server-side validation and fall back to `IDLE`.
 7. **Execute** the action deterministically in the simulator.
    - Simulator applies canonical state updates and emits structured events (see below).
+   - Movement uses grid-based pathfinding (A*) and never traverses walls.
 8. **Write back** action (as natural language) and any reflections/plans into memory.
    - Memory narration is generated from templates based on the executed action/event, to keep
      memory consistent with canonical state and replay.
@@ -194,6 +197,24 @@ Importance is computed for all memory types (`observation`, `plan`, `reflection`
 - Agents create a daily plan in broad strokes (5–8 chunks), then recursively decompose it: day plan → hour chunks → 5–15 minute actions.
 - Plans are stored in the memory stream with time and location, and are included in retrieval.
 - When new observations occur, the agent decides whether to react; if so, it updates the plan from that point forward.
+
+## World Layout + Map Rules
+
+- **Single map file**: the world lives in one ASCII map (e.g., `world/world.map`).
+- **Rooms**: defined by axis-aligned bounding boxes in `world.json`.
+  - Each room is a square/rect inside the world map.
+- **Entrances**: rooms must include at least one opening to the outside (no portals).
+  - Pathfinding treats walls as non-walkable, openings as walkable.
+- **No portals**: remove portal digits from the map and portal links from `world.json`.
+
+## Editor Mode (World Layout)
+
+- A dedicated editor view renders the **entire world map** and does not run the simulation.
+- Cursor navigation with arrow keys.
+- Room bounding boxes are defined by:
+  - Set **top-left** corner.
+  - Set **bottom-right** corner.
+- On-screen help shows all shortcuts; layout adjusts to terminal resize.
 
 ## LLM Usage (local only)
 

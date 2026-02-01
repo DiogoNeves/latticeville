@@ -1,0 +1,299 @@
+"""World map editor for defining room bounds."""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from rich.align import Align
+from rich.console import Console, Group, RenderableType
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.live import Live
+
+from latticeville.render.terminal_input import raw_terminal, read_key
+from latticeville.render.world_map import compute_viewport, render_map_lines
+from latticeville.sim.world_loader import WorldConfig, WorldPaths, load_world_config
+from latticeville.sim.world_state import Bounds, ObjectState, WorldMap
+
+
+LEFT_WIDTH = 30
+RIGHT_WIDTH = 36
+
+
+@dataclass
+class EditorState:
+    cursor: tuple[int, int] = (1, 1)
+    selection_start: tuple[int, int] | None = None
+    selection_end: tuple[int, int] | None = None
+    rooms: list[RoomDef] = field(default_factory=list)
+    should_exit: bool = False
+    last_message: str = ""
+
+
+@dataclass(frozen=True)
+class RoomDef:
+    room_id: str
+    name: str
+    bounds: Bounds
+
+
+@dataclass(frozen=True)
+class EditorResources:
+    config: WorldConfig
+    world_map: WorldMap
+    objects: dict[str, ObjectState]
+    world_json_path: Path
+
+
+def run_world_editor(*, base_dir: Path | None = None) -> None:
+    resources = _load_editor_resources(base_dir=base_dir)
+    state = EditorState(
+        cursor=(1, 1),
+        rooms=[RoomDef(room.id, room.name, room.bounds) for room in resources.config.rooms],
+    )
+    console = Console()
+
+    with raw_terminal():
+        with Live(console=console, auto_refresh=False, screen=True) as live:
+            while not state.should_exit:
+                _handle_input(state, resources)
+                renderable = _render_editor(state, resources, frame_size=console.size)
+                live.update(renderable, refresh=True)
+                time.sleep(0.03)
+
+
+def _render_editor(
+    state: EditorState, resources: EditorResources, *, frame_size
+) -> RenderableType:
+    map_width, map_height = _map_panel_size(frame_size)
+    viewport = compute_viewport(
+        resources.world_map.width,
+        resources.world_map.height,
+        map_width,
+        map_height,
+        center=state.cursor,
+    )
+
+    selection = _selection_bounds(state)
+    room_bounds = [room.bounds for room in state.rooms]
+
+    lines = render_map_lines(
+        resources.world_map,
+        objects=resources.objects,
+        agents={},
+        selected_agent_id=None,
+        viewport=viewport,
+        rooms=room_bounds,
+        selection=selection,
+        cursor=state.cursor,
+    )
+    map_panel = Align.center(Group(*lines), vertical="middle")
+
+    left = _render_rooms_panel(state)
+    right = _render_editor_panel(state)
+
+    layout = Layout()
+    layout.split_row(
+        Layout(Panel(left, title="Rooms"), size=LEFT_WIDTH),
+        Layout(Panel(map_panel, title="World"), ratio=1),
+        Layout(Panel(right, title="Editor"), size=RIGHT_WIDTH),
+    )
+
+    wrapper = Layout()
+    wrapper.split_column(
+        Layout(layout, ratio=1),
+        Layout(_render_status_bar(state), size=1),
+    )
+    return wrapper
+
+
+def _render_rooms_panel(state: EditorState) -> RenderableType:
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Room")
+    table.add_column("Bounds")
+    for room in state.rooms:
+        bounds = room.bounds
+        label = f"{bounds.x},{bounds.y} {bounds.width}x{bounds.height}"
+        table.add_row(room.name, label)
+    if not state.rooms:
+        table.add_row("-", "-")
+    return table
+
+
+def _render_editor_panel(state: EditorState) -> RenderableType:
+    table = Table(show_header=False)
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Cursor", f"{state.cursor[0]}, {state.cursor[1]}")
+    if state.selection_start:
+        table.add_row("Top-left", f"{state.selection_start[0]}, {state.selection_start[1]}")
+    else:
+        table.add_row("Top-left", "-")
+    if state.selection_end:
+        table.add_row("Bottom-right", f"{state.selection_end[0]}, {state.selection_end[1]}")
+    else:
+        table.add_row("Bottom-right", "-")
+    if state.last_message:
+        table.add_row("Note", state.last_message)
+    return table
+
+
+def _render_status_bar(state: EditorState) -> Panel:
+    text = Text(
+        "Editor: arrows=move | t=set top-left | b=set bottom-right | s=save | c=clear | q=quit",
+        style="bold",
+    )
+    return Panel(text, padding=(0, 1))
+
+
+def _handle_input(state: EditorState, resources: EditorResources) -> None:
+    event = read_key()
+    if not event:
+        return
+    if event.kind != "key":
+        return
+    key = event.key or ""
+
+    if key in {"q", "Q"}:
+        state.should_exit = True
+        return
+    if key in {"c", "C"}:
+        state.selection_start = None
+        state.selection_end = None
+        state.last_message = "Selection cleared."
+        return
+    if key in {"s", "S"}:
+        _save_rooms(state, resources)
+        return
+    if key in {"t", "T"}:
+        state.selection_start = state.cursor
+        state.last_message = "Top-left set."
+        return
+    if key in {"b", "B"}:
+        state.selection_end = state.cursor
+        _maybe_commit_selection(state)
+        return
+
+    if key in {"UP", "DOWN", "LEFT", "RIGHT"}:
+        state.cursor = _move_cursor(state.cursor, key, resources.world_map)
+        return
+
+
+def _move_cursor(
+    cursor: tuple[int, int], key: str, world_map: WorldMap
+) -> tuple[int, int]:
+    x, y = cursor
+    if key == "UP":
+        y -= 1
+    elif key == "DOWN":
+        y += 1
+    elif key == "LEFT":
+        x -= 1
+    elif key == "RIGHT":
+        x += 1
+    x = max(0, min(world_map.width - 1, x))
+    y = max(0, min(world_map.height - 1, y))
+    return (x, y)
+
+
+def _maybe_commit_selection(state: EditorState) -> None:
+    if state.selection_start is None or state.selection_end is None:
+        return
+    bounds = _normalize_bounds(state.selection_start, state.selection_end)
+    room_id = _next_room_id(state.rooms)
+    name = f"Room {len(state.rooms) + 1}"
+    state.rooms.append(RoomDef(room_id=room_id, name=name, bounds=bounds))
+    state.selection_start = None
+    state.selection_end = None
+    state.last_message = f"Added {name}."
+
+
+def _normalize_bounds(
+    start: tuple[int, int], end: tuple[int, int]
+) -> Bounds:
+    x0, y0 = start
+    x1, y1 = end
+    left = min(x0, x1)
+    top = min(y0, y1)
+    right = max(x0, x1)
+    bottom = max(y0, y1)
+    return Bounds(x=left, y=top, width=right - left + 1, height=bottom - top + 1)
+
+
+def _selection_bounds(state: EditorState) -> Bounds | None:
+    if state.selection_start and state.selection_end:
+        return _normalize_bounds(state.selection_start, state.selection_end)
+    if state.selection_start:
+        x, y = state.selection_start
+        return Bounds(x=x, y=y, width=1, height=1)
+    return None
+
+
+def _next_room_id(rooms: list[RoomDef]) -> str:
+    index = len(rooms) + 1
+    return f"room_{index:02d}"
+
+
+def _save_rooms(state: EditorState, resources: EditorResources) -> None:
+    payload = json.loads(resources.world_json_path.read_text(encoding="utf-8"))
+    payload["rooms"] = [
+        {
+            "id": room.room_id,
+            "name": room.name,
+            "bounds": {
+                "x": room.bounds.x,
+                "y": room.bounds.y,
+                "width": room.bounds.width,
+                "height": room.bounds.height,
+            },
+        }
+        for room in state.rooms
+    ]
+    resources.world_json_path.write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
+    state.last_message = "Saved to world.json."
+
+
+def _load_editor_resources(*, base_dir: Path | None) -> EditorResources:
+    config = load_world_config()
+    base_dir = base_dir or WorldPaths().base_dir
+    world_json_path = base_dir / "world.json"
+    map_path = base_dir / config.map_file
+    world_map = _load_world_map(map_path)
+    objects = {
+        obj.id: ObjectState(
+            object_id=obj.id,
+            name=obj.name,
+            room_id=obj.room_id or "",
+            symbol=obj.symbol,
+            position=obj.position,
+        )
+        for obj in config.objects
+    }
+    return EditorResources(
+        config=config,
+        world_map=world_map,
+        objects=objects,
+        world_json_path=world_json_path,
+    )
+
+
+def _load_world_map(path: Path) -> WorldMap:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    width = max((len(line) for line in lines), default=0)
+    padded = [line.ljust(width) for line in lines]
+    return WorldMap(lines=padded, width=width, height=len(padded))
+
+
+def _map_panel_size(frame_size) -> tuple[int, int]:
+    if frame_size is None:
+        return (80, 24)
+    width = max(10, frame_size.width - LEFT_WIDTH - RIGHT_WIDTH - 6)
+    height = max(6, frame_size.height - 3)
+    return (max(1, width - 2), max(1, height - 2))

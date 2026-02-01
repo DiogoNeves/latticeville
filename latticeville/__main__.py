@@ -13,6 +13,7 @@ from latticeville.render.live_tail import tail_replay_log
 from latticeville.render.replay_picker import pick_and_run_replay
 from latticeville.render.replay_reader import read_tick_payloads
 from latticeville.render.viewer import render_tick
+from latticeville.render.world_editor import run_world_editor
 
 DEFAULT_REPLAY_DIR = Path("replay")
 
@@ -28,6 +29,11 @@ def main() -> None:
         "--main-view",
         action="store_true",
         help="Run simulation and render the main world viewer.",
+    )
+    parser.add_argument(
+        "--edit-world",
+        action="store_true",
+        help="Open the world map editor (no simulation).",
     )
     parser.add_argument(
         "--replay",
@@ -89,6 +95,10 @@ def main() -> None:
 
     if args.replay_view:
         pick_and_run_replay(args.replay_dir)
+        return
+
+    if args.edit_world:
+        run_world_editor(base_dir=Path("world"))
         return
 
     if args.main_view:

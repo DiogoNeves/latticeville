@@ -28,7 +28,8 @@ from latticeville.llm.prompts import (
 )
 from latticeville.sim.contracts import ActionKind, Event, StateSnapshot, TickPayload
 from latticeville.sim.memory import MemoryStream
-from latticeville.sim.movement import advance_movement, start_move
+from latticeville.sim.movement import advance_movement, build_grid, start_move
+from latticeville.sim.pathfinding import PathFinder
 from latticeville.sim.planning import (
     PlanHierarchy,
     PlanItem,
@@ -62,6 +63,7 @@ def run_ticks(
     }
     plan_cache: dict[str, PlanHierarchy] = {}
     dialogue_histories: dict[tuple[str, str], list[str]] = {}
+    pathfinder = PathFinder(build_grid(state.world_map))
     step_count = 0
     while ticks is None or step_count < ticks:
         world_snapshot = state.world.model_copy(deep=True)
@@ -76,7 +78,7 @@ def run_ticks(
             agent = state.agents[agent_id]
             agent.location_id = snapshot_locations[agent_id]
             valid_targets = build_valid_targets(
-                world_snapshot, agent=agent, portals=state.portals
+                world_snapshot, agent=agent
             )
             plan_step = None
             if agent_id in plan_cache:
@@ -102,16 +104,16 @@ def run_ticks(
                 continue
             start_move(
                 agent,
-                state.world,
+                state,
                 action.move.to_location_id,
-                portals=state.portals,
+                pathfinder=pathfinder,
             )
 
         events: list[Event] = []
         move_events_by_agent: dict[str, Event] = {}
         for agent_id in sorted(state.agents.keys()):
             agent = state.agents[agent_id]
-            event = advance_movement(state.world, agent)
+            event = advance_movement(state, agent)
             if event:
                 events.append(event)
                 move_events_by_agent[agent_id] = event
@@ -125,7 +127,7 @@ def run_ticks(
             stream = memory_streams[agent_id]
             reflection_state = reflection_states[agent_id]
             location_node = state.world.nodes.get(agent.location_id)
-            location_name = location_node.name if location_node else agent.location_id
+            location_name = location_node.name if location_node else agent.location_id or "Unknown"
             observations = _generate_observations(
                 llm_policy,
                 agent_name=agent.name,
@@ -406,9 +408,16 @@ def run_ticks(
         events.extend(memory_events)
         state.tick += 1
         world_snapshot = state.world.model_copy(deep=True)
+        agent_positions = {
+            agent_id: agent.position for agent_id, agent in state.agents.items()
+        }
         payload = TickPayload(
             tick=state.tick,
-            state=StateSnapshot(world=world_snapshot, beliefs={}),
+            state=StateSnapshot(
+                world=world_snapshot,
+                beliefs={},
+                agent_positions=agent_positions,
+            ),
             events=events or None,
         )
         yield payload

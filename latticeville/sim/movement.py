@@ -1,100 +1,54 @@
-"""Deterministic movement helpers for the minimal sim loop."""
+"""Grid-based movement helpers using A* pathfinding."""
 
 from __future__ import annotations
 
-from collections import deque
-
-from latticeville.sim.contracts import Event, NodeType, WorldTree
-from latticeville.sim.world_state import AgentState
-
-
-def build_area_graph(
-    world: WorldTree, *, portals: dict[str, dict[str, str]] | None = None
-) -> dict[str, set[str]]:
-    graph: dict[str, set[str]] = {}
-    for node in world.nodes.values():
-        if node.type != NodeType.AREA:
-            continue
-        graph.setdefault(node.id, set())
-        if node.parent_id and world.nodes[node.parent_id].type == NodeType.AREA:
-            graph[node.id].add(node.parent_id)
-            graph.setdefault(node.parent_id, set()).add(node.id)
-        for child_id in node.children:
-            child = world.nodes.get(child_id)
-            if child and child.type == NodeType.AREA:
-                graph[node.id].add(child_id)
-                graph.setdefault(child_id, set()).add(node.id)
-    if portals:
-        for area_id, links in portals.items():
-            graph.setdefault(area_id, set())
-            for destination in links.values():
-                graph.setdefault(destination, set())
-                graph[area_id].add(destination)
-    return graph
+from latticeville.sim.contracts import Event
+from latticeville.sim.pathfinding import Grid, PathFinder
+from latticeville.sim.world_state import AgentState, RoomState, WorldMap, WorldState
 
 
-def find_path(
-    world: WorldTree,
-    start: str,
-    goal: str,
-    *,
-    portals: dict[str, dict[str, str]] | None = None,
-) -> list[str]:
-    if start == goal:
-        return []
-    graph = build_area_graph(world, portals=portals)
-    if start not in graph or goal not in graph:
-        return []
-
-    queue: deque[str] = deque([start])
-    came_from: dict[str, str | None] = {start: None}
-
-    while queue:
-        current = queue.popleft()
-        if current == goal:
-            break
-        for neighbor in sorted(graph[current]):
-            if neighbor in came_from:
-                continue
-            came_from[neighbor] = current
-            queue.append(neighbor)
-
-    if goal not in came_from:
-        return []
-
-    path: list[str] = []
-    current: str | None = goal
-    while current is not None and current != start:
-        path.append(current)
-        current = came_from[current]
-    path.reverse()
-    return path
+def build_grid(world_map: WorldMap) -> Grid:
+    walls = set()
+    for y, line in enumerate(world_map.lines):
+        for x, ch in enumerate(line):
+            if ch == "#":
+                walls.add((x, y))
+    return Grid(width=world_map.width, height=world_map.height, walls=walls)
 
 
 def start_move(
     agent: AgentState,
-    world: WorldTree,
-    destination: str,
+    state: WorldState,
+    destination_room_id: str,
     *,
-    portals: dict[str, dict[str, str]] | None = None,
+    pathfinder: PathFinder,
 ) -> None:
-    if agent.location_id == destination:
+    if agent.location_id == destination_room_id:
         return
-    path = find_path(world, agent.location_id, destination, portals=portals)
+    if destination_room_id not in state.rooms:
+        return
+    target = _pick_room_target(
+        state.rooms[destination_room_id], state.world_map, _blocked_positions(state)
+    )
+    path = pathfinder.find_path(agent.position, target, _blocked_positions(state))
     if not path:
         return
     agent.path_remaining = path
     agent.travel_origin = agent.location_id
-    agent.travel_destination = destination
+    agent.travel_destination = destination_room_id
 
 
-def advance_movement(world: WorldTree, agent: AgentState) -> Event | None:
+def advance_movement(state: WorldState, agent: AgentState) -> Event | None:
     if not agent.path_remaining:
         return None
 
-    next_location = agent.path_remaining.pop(0)
-    move_agent_node(world, agent.agent_id, next_location)
-    agent.location_id = next_location
+    next_pos = agent.path_remaining.pop(0)
+    agent.position = next_pos
+
+    next_room = state.room_for_position(*next_pos)
+    if next_room and next_room != agent.location_id:
+        _move_agent_node(state, agent.agent_id, next_room)
+        agent.location_id = next_room
 
     if agent.path_remaining:
         return None
@@ -111,13 +65,39 @@ def advance_movement(world: WorldTree, agent: AgentState) -> Event | None:
     return None
 
 
-def move_agent_node(world: WorldTree, agent_id: str, new_parent_id: str) -> None:
-    agent_node = world.nodes[agent_id]
+def _blocked_positions(state: WorldState) -> set[tuple[int, int]]:
+    return {obj.position for obj in state.objects.values()}
+
+
+def _pick_room_target(
+    room: RoomState, world_map: WorldMap, blocked: set[tuple[int, int]]
+) -> tuple[int, int]:
+    candidates: list[tuple[int, int]] = []
+    for y in range(room.bounds.y + 1, room.bounds.y + room.bounds.height - 1):
+        for x in range(room.bounds.x + 1, room.bounds.x + room.bounds.width - 1):
+            if (x, y) in blocked:
+                continue
+            if _is_walkable(world_map, x, y):
+                candidates.append((x, y))
+    if candidates:
+        center = (room.bounds.x + room.bounds.width // 2, room.bounds.y + room.bounds.height // 2)
+        return min(candidates, key=lambda pos: abs(pos[0] - center[0]) + abs(pos[1] - center[1]))
+    return (room.bounds.x + 1, room.bounds.y + 1)
+
+
+def _is_walkable(world_map: WorldMap, x: int, y: int) -> bool:
+    if x < 0 or y < 0 or y >= world_map.height or x >= world_map.width:
+        return False
+    return world_map.lines[y][x] != "#"
+
+
+def _move_agent_node(state: WorldState, agent_id: str, new_room_id: str) -> None:
+    agent_node = state.world.nodes[agent_id]
     old_parent_id = agent_node.parent_id
 
-    if old_parent_id and agent_id in world.nodes[old_parent_id].children:
-        world.nodes[old_parent_id].children.remove(agent_id)
-    if agent_id not in world.nodes[new_parent_id].children:
-        world.nodes[new_parent_id].children.append(agent_id)
+    if old_parent_id and agent_id in state.world.nodes[old_parent_id].children:
+        state.world.nodes[old_parent_id].children.remove(agent_id)
+    if agent_id not in state.world.nodes[new_room_id].children:
+        state.world.nodes[new_room_id].children.append(agent_id)
 
-    agent_node.parent_id = new_parent_id
+    agent_node.parent_id = new_room_id

@@ -148,7 +148,7 @@ latticeville/
 - Modifying `.gitignore` or repository structure
 - Adding external API calls or networked dependencies
 - Changing core architecture decisions
-- Committing directly to main branch (use PRs)
+- Committing directly to main branch (use PRs), unless the user explicitly grants permission in the request
 
 **Never:**
 

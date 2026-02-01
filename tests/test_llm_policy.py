@@ -10,6 +10,7 @@ def test_fake_llm_deterministic_move() -> None:
         agent_id="ada",
         name="Ada",
         location_id="street",
+        position=(1, 1),
         patrol_route=["street", "cafe"],
     )
     policy = FakeLLM()
@@ -28,6 +29,7 @@ def test_fake_llm_invalid_target_falls_back_to_idle() -> None:
         agent_id="ada",
         name="Ada",
         location_id="street",
+        position=(1, 1),
         patrol_route=["street", "nowhere"],
     )
     policy = FakeLLM()

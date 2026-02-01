@@ -14,17 +14,17 @@ def test_main_viewer_renders() -> None:
     console.print(renderable)
     output = console.export_text()
     assert "Events" in output
-    assert "World:" in output
+    assert "World" in output
     assert "Characters" in output
 
 
-def test_main_viewer_renders_overview() -> None:
+def test_main_viewer_renders_with_follow_mode() -> None:
     state = build_tiny_world()
     payload = next(iter(run_ticks(state, ticks=1)))
-    view_state = MainViewerState(view_mode="overview")
+    view_state = MainViewerState(camera_mode="follow")
     renderable = render_main_view(payload, state=view_state)
 
     console = Console(width=100, record=True)
     console.print(renderable)
     output = console.export_text()
-    assert "World: overview" in output
+    assert "World" in output

@@ -1,21 +1,26 @@
 ## World maps
 
-Each area has a `<area_name>.map` ASCII file. Portals are digits `1-9` and are local
-to the area. The actual portal destinations are defined in `world.json`. A global
-`overview.map` can be used for the world overview layer.
+The world is defined in a single ASCII map file plus metadata in `world.json`.
+
+Files:
+- `world/world.map`: the full world grid.
+- `world/world.json`: rooms (bounding boxes) + objects.
+- `world/characters.json`: characters and starting rooms.
 
 Legend (default):
-- `#` wall
-- `.` floor
-- `+` door
-- `=` road/bridge
-- `~` water
-- `^` hazard
+- `#` wall (impassable)
+- `.` floor (walkable)
+- `+` door (walkable)
+- `=` road/bridge (walkable)
+- `~` water (impassable unless configured)
+- `^` hazard (impassable unless configured)
 - `*` generic object
 - `T` tree
-- `B` bench
+- `B` bench/boat
+- `K` stall
+- `S` shelf
 - `@` character (agents are overlaid at runtime)
-- `1-9` portal tiles (local to the area)
-- `A-Z` area symbols (overview map only; per-area `overview_symbol` in `world.json`)
 
-Objects can override symbols in `world.json`.
+Rooms are axis-aligned rectangles defined in `world.json`. Each room should have
+at least one entrance (an opening in the wall). Objects can be placed by explicit
+`(x, y)` positions on the map and are treated as impassable for pathfinding.

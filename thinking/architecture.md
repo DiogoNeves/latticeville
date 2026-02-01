@@ -24,14 +24,16 @@ See [`latticeville_data_models_diagram.png`](./latticeville_data_models_diagram.
 
 ### Canonical world state
 
-The simulation maintains a canonical world tree:
+The simulation maintains a canonical **world tree** and a **grid map**:
 
 - Root is “world”.
-- **Areas** can contain subareas and objects.
+- **Areas** can contain objects.
 - **Objects** are leaves.
 - **Agents** live in the tree as leaf nodes (their parent is their current location).
 
 Each node has: `id`, `name`, `type` (`area`, `object`, `agent`), `parent_id`, and ordered `children`.
+
+The grid map is a single ASCII file for the entire world. Areas are defined by axis-aligned bounding boxes in `world.json`, and the tree is derived from those bounds. Agents move on the grid, and their current area is resolved from their grid position.
 
 ### Per-agent belief state
 
@@ -152,14 +154,14 @@ The executor validates arguments against these sets and uses `IDLE` on invalid i
 
 ### Movement and location changes
 
-Movement uses a graph-based distance calculation with fixed tick costs per edge:
+Movement uses **grid-based pathfinding (A*)** with fixed tick costs per step:
 
-- Total travel time is calculated as: number of edges along the path \(\times\) a constant per-edge cost.
-- Baseline: **all edges have the same cost**, set to `1` tick per edge.
-- While in transit, the agent advances one edge per tick, occupying intermediate locations for perception/visibility. This allows agents to perceive each other “on the way” and potentially re-plan.
+- Total travel time is calculated as: number of grid steps along the path \(\times\) a constant per-step cost.
+- Baseline: **all steps have the same cost**, set to `1` tick per step.
+- While in transit, the agent advances one grid step per tick, occupying intermediate positions for perception/visibility. This allows agents to perceive each other “on the way” and potentially re-plan.
 - When traversal completes, update the agent’s location at the end of that tick and emit a `MOVE(agent_id, from_location, to_location)` event.
 
-This diverges from the Generative Agents paper’s rendered/pathfinding approach; we use discrete graph traversal.
+This aligns with the paper’s rendered/pathfinding approach, using discrete grid traversal.
 
 ### Object state changes
 
@@ -198,6 +200,10 @@ Key properties:
 - **Immutability**: treat tick payloads as read-only data.
 - **Tick boundary**: a viewer receives payloads only after the simulator has fully applied the tick.
 - **Latest-frame semantics**: viewers are allowed to skip intermediate ticks and render only the latest completed tick.
+
+## Editor mode
+
+A separate editor view renders the **entire world map** and does not run the simulation. It allows cursor navigation and definition of room bounding boxes directly on the grid, with on-screen shortcuts and resize-aware layout.
 
 ### TickPayload
 

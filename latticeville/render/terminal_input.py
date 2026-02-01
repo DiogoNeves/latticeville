@@ -61,6 +61,10 @@ def _parse_csi() -> InputEvent | None:
         return InputEvent(kind="key", key="UP")
     if seq == "B":
         return InputEvent(kind="key", key="DOWN")
+    if seq == "C":
+        return InputEvent(kind="key", key="RIGHT")
+    if seq == "D":
+        return InputEvent(kind="key", key="LEFT")
     if seq == "<":
         return _parse_mouse_sgr()
     return None

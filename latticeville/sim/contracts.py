@@ -17,7 +17,6 @@ from pydantic import (
 
 class NodeType(str, Enum):
     AREA = "area"
-    SUBAREA = "subarea"
     OBJECT = "object"
     AGENT = "agent"
 
@@ -57,6 +56,7 @@ class StateSnapshot(BaseModel):
 
     world: WorldTree
     beliefs: dict[str, BeliefTree] = Field(default_factory=dict)
+    agent_positions: dict[str, tuple[int, int]] = Field(default_factory=dict)
 
 
 class Event(BaseModel):

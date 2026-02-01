@@ -1,117 +1,127 @@
 {
-  "overview_map_file": "overview.map",
-  "areas": [
-    {
-      "id": "street",
-      "name": "Neon Street",
-      "map_file": "street.map",
-      "overview_symbol": "S",
-      "overview_anchor": { "x": 5, "y": 4 },
-      "portals": {
-        "1": "cafe",
-        "2": "market",
-        "3": "library"
-      }
-    },
+  "map_file": "world.map",
+  "rooms": [
     {
       "id": "cafe",
       "name": "Cafe",
-      "map_file": "cafe.map",
-      "overview_symbol": "C",
-      "overview_anchor": { "x": 12, "y": 4 },
-      "portals": {
-        "1": "street",
-        "2": "park",
-        "3": "market"
-      }
-    },
-    {
-      "id": "park",
-      "name": "Park",
-      "map_file": "park.map",
-      "overview_symbol": "P",
-      "overview_anchor": { "x": 18, "y": 6 },
-      "portals": {
-        "1": "cafe",
-        "2": "harbor"
+      "bounds": {
+        "x": 2,
+        "y": 2,
+        "width": 14,
+        "height": 6
       }
     },
     {
       "id": "library",
       "name": "Library",
-      "map_file": "library.map",
-      "overview_symbol": "L",
-      "overview_anchor": { "x": 5, "y": 2 },
-      "portals": {
-        "1": "street"
+      "bounds": {
+        "x": 20,
+        "y": 2,
+        "width": 14,
+        "height": 6
       }
     },
     {
       "id": "market",
       "name": "Market",
-      "map_file": "market.map",
-      "overview_symbol": "M",
-      "overview_anchor": { "x": 12, "y": 2 },
-      "portals": {
-        "1": "street",
-        "2": "cafe",
-        "3": "harbor"
+      "bounds": {
+        "x": 38,
+        "y": 2,
+        "width": 14,
+        "height": 6
+      }
+    },
+    {
+      "id": "street",
+      "name": "Street",
+      "bounds": {
+        "x": 2,
+        "y": 8,
+        "width": 56,
+        "height": 7
+      }
+    },
+    {
+      "id": "park",
+      "name": "Park",
+      "bounds": {
+        "x": 2,
+        "y": 15,
+        "width": 24,
+        "height": 7
       }
     },
     {
       "id": "harbor",
       "name": "Harbor",
-      "map_file": "harbor.map",
-      "overview_symbol": "H",
-      "overview_anchor": { "x": 18, "y": 7 },
-      "portals": {
-        "1": "park",
-        "2": "market"
+      "bounds": {
+        "x": 28,
+        "y": 15,
+        "width": 30,
+        "height": 7
       }
     }
   ],
   "objects": [
     {
-      "id": "bench",
-      "name": "Bench",
-      "area_id": "park",
-      "symbol": "B",
-      "position": { "x": 6, "y": 3 }
-    },
-    {
-      "id": "tree",
-      "name": "Tree",
-      "area_id": "park",
-      "symbol": "T",
-      "position": { "x": 3, "y": 2 }
-    },
-    {
       "id": "counter",
       "name": "Counter",
-      "area_id": "cafe",
+      "room_id": "cafe",
       "symbol": "*",
-      "position": { "x": 5, "y": 2 }
+      "position": {
+        "x": 7,
+        "y": 4
+      }
     },
     {
       "id": "shelf",
       "name": "Shelf",
-      "area_id": "library",
+      "room_id": "library",
       "symbol": "S",
-      "position": { "x": 4, "y": 2 }
+      "position": {
+        "x": 25,
+        "y": 4
+      }
     },
     {
       "id": "stall",
       "name": "Stall",
-      "area_id": "market",
+      "room_id": "market",
       "symbol": "K",
-      "position": { "x": 8, "y": 2 }
+      "position": {
+        "x": 45,
+        "y": 4
+      }
+    },
+    {
+      "id": "tree",
+      "name": "Tree",
+      "room_id": "park",
+      "symbol": "T",
+      "position": {
+        "x": 8,
+        "y": 17
+      }
+    },
+    {
+      "id": "bench",
+      "name": "Bench",
+      "room_id": "park",
+      "symbol": "B",
+      "position": {
+        "x": 18,
+        "y": 18
+      }
     },
     {
       "id": "boat",
       "name": "Boat",
-      "area_id": "harbor",
+      "room_id": "harbor",
       "symbol": "B",
-      "position": { "x": 8, "y": 1 }
+      "position": {
+        "x": 42,
+        "y": 17
+      }
     }
   ]
 }
