@@ -76,8 +76,9 @@ def run_world_editor(*, base_dir: Path | None = None) -> None:
             try:
                 while not state.should_exit:
                     resources = _maybe_reload_resources(state, resources)
-                    _handle_input(state, resources)
-                    renderable = _render_editor(state, resources, frame_size=console.size)
+                    frame_size = console.size
+                    _handle_input(state, resources, frame_size=frame_size)
+                    renderable = _render_editor(state, resources, frame_size=frame_size)
                     live.update(renderable, refresh=True)
                     time.sleep(0.03)
             except KeyboardInterrupt:
@@ -205,9 +206,22 @@ def _render_status_bar(state: EditorState) -> Panel:
     return Panel(text, padding=(0, 1))
 
 
-def _handle_input(state: EditorState, resources: EditorResources) -> None:
+def _handle_input(
+    state: EditorState, resources: EditorResources, *, frame_size
+) -> None:
     event = read_key()
     if not event:
+        return
+    if event.kind == "mouse":
+        target = _map_click_to_world(
+            event.x,
+            event.y,
+            state,
+            resources,
+            frame_size,
+        )
+        if target is not None:
+            state.cursor = target
         return
     if event.kind != "key":
         return
@@ -249,6 +263,57 @@ def _render_center_panel(
         Layout(Panel(map_panel, title="World"), ratio=1),
     )
     return layout
+
+
+def _map_click_to_world(
+    x: int | None,
+    y: int | None,
+    state: EditorState,
+    resources: EditorResources,
+    frame_size,
+) -> tuple[int, int] | None:
+    if x is None or y is None or frame_size is None:
+        return None
+
+    map_width, map_height = _map_panel_size(frame_size)
+    viewport = compute_viewport(
+        resources.world_map.width,
+        resources.world_map.height,
+        map_width,
+        map_height,
+        center=state.cursor,
+    )
+
+    total_width = frame_size.width
+    total_height = frame_size.height
+    main_height = total_height - 3
+    center_width = total_width - LEFT_WIDTH - RIGHT_WIDTH
+
+    map_panel_top = 1 + 3
+    map_panel_left = LEFT_WIDTH + 1
+    map_panel_height = main_height - 3
+
+    content_left = map_panel_left + 1
+    content_top = map_panel_top + 1
+    content_width = max(1, center_width - 2)
+    content_height = max(1, map_panel_height - 2)
+
+    map_lines_width = viewport.width
+    map_lines_height = viewport.height
+    offset_x = max(0, (content_width - map_lines_width) // 2)
+    offset_y = max(0, (content_height - map_lines_height) // 2)
+
+    map_left = content_left + offset_x
+    map_top = content_top + offset_y
+    map_right = map_left + map_lines_width - 1
+    map_bottom = map_top + map_lines_height - 1
+
+    if not (map_left <= x <= map_right and map_top <= y <= map_bottom):
+        return None
+
+    world_x = viewport.x + (x - map_left)
+    world_y = viewport.y + (y - map_top)
+    return (world_x, world_y)
 
 
 def _move_cursor(
