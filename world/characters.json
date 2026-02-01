@@ -4,29 +4,29 @@
       "id": "ada",
       "name": "Ada",
       "symbol": "@",
-      "start_room_id": "park",
-      "patrol_route": ["park", "harbor"]
+      "start_room_id": "adas",
+      "patrol_route": ["adas", "byrons"]
     },
     {
       "id": "byron",
       "name": "Byron",
       "symbol": "@",
-      "start_room_id": "cafe",
-      "patrol_route": ["cafe", "market"]
+      "start_room_id": "byrons",
+      "patrol_route": ["byrons", "restaurant"]
     },
     {
       "id": "cleo",
       "name": "Cleo",
       "symbol": "@",
-      "start_room_id": "library",
-      "patrol_route": ["library", "park"]
+      "start_room_id": "cleos",
+      "patrol_route": ["cleos"]
     },
     {
       "id": "dax",
       "name": "Dax",
       "symbol": "@",
-      "start_room_id": "market",
-      "patrol_route": ["market", "harbor"]
+      "start_room_id": "restaurant",
+      "patrol_route": ["restaurant"]
     }
   ]
 }

@@ -2,8 +2,8 @@
   "map_file": "world.map",
   "rooms": [
     {
-      "id": "cafe",
-      "name": "Cafe",
+      "id": "byrons",
+      "name": "Byron's House",
       "bounds": {
         "x": 2,
         "y": 2,
@@ -12,8 +12,8 @@
       }
     },
     {
-      "id": "library",
-      "name": "Library",
+      "id": "adas",
+      "name": "Ada's House",
       "bounds": {
         "x": 20,
         "y": 2,
@@ -22,8 +22,8 @@
       }
     },
     {
-      "id": "market",
-      "name": "Market",
+      "id": "cleos",
+      "name": "Cleo's House",
       "bounds": {
         "x": 38,
         "y": 2,
