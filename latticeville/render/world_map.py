@@ -10,11 +10,11 @@ from latticeville.sim.world_state import Bounds, ObjectState, WorldMap
 
 
 TILE_STYLES = {
-    "#": "grey50",
-    ".": "green3",
-    ",": "yellow3",
-    ";": "green4",
-    ":": "grey70",
+    "#": "bright_magenta",
+    ".": "grey70",
+    ",": "green3",
+    ";": "yellow",
+    ":": "yellow3",
     "+": "yellow",
     "=": "yellow",
     "~": "blue",
@@ -78,6 +78,7 @@ def render_map_lines(
     styles = [
         [TILE_STYLES.get(ch, "grey70") for ch in row] for row in grid
     ]
+    _apply_flower_styles(grid, styles)
 
     for obj in objects.values():
         x, y = obj.position
@@ -100,6 +101,8 @@ def render_map_lines(
                 if agent_id == selected_agent_id
                 else AGENT_STYLE
             )
+
+    _apply_boundary_styles(grid, styles)
 
     if cursor:
         cx, cy = cursor
@@ -135,6 +138,32 @@ def _apply_bounds_style(styles: list[list[str]], bounds: Bounds, style: str) -> 
             styles[y][x0] = style
         if 0 <= y < height and 0 <= x1 < width:
             styles[y][x1] = style
+
+
+def _apply_boundary_styles(grid: list[list[str]], styles: list[list[str]]) -> None:
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    if not height or not width:
+        return
+    for x in range(width):
+        if grid[0][x] == "#":
+            styles[0][x] = "grey50"
+        if grid[height - 1][x] == "#":
+            styles[height - 1][x] = "grey50"
+    for y in range(height):
+        if grid[y][0] == "#":
+            styles[y][0] = "grey50"
+        if grid[y][width - 1] == "#":
+            styles[y][width - 1] = "grey50"
+
+
+def _apply_flower_styles(grid: list[list[str]], styles: list[list[str]]) -> None:
+    palette = ["yellow", "bright_magenta", "white"]
+    for y, row in enumerate(grid):
+        for x, ch in enumerate(row):
+            if ch != ";":
+                continue
+            styles[y][x] = palette[(x + y) % len(palette)]
 
 
 def _clamp(value: int, low: int, high: int) -> int:
