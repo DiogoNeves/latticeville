@@ -258,8 +258,6 @@ def _handle_input(
         )
         if target is not None:
             state.cursor = target
-            if state.paint_enabled and state.brush:
-                _apply_brush(resources, state.cursor, state.brush)
         return
     if event.kind != "key":
         return
