@@ -11,7 +11,10 @@ from latticeville.sim.world_state import Bounds, ObjectState, WorldMap
 
 TILE_STYLES = {
     "#": "grey50",
-    ".": "grey70",
+    ".": "green3",
+    ",": "yellow3",
+    ";": "green4",
+    ":": "grey70",
     "+": "yellow",
     "=": "yellow",
     "~": "blue",

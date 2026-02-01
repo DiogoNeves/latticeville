@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from latticeville.sim.contracts import Event
 from latticeville.sim.pathfinding import Grid, PathFinder
+from latticeville.sim.world_tiles import is_walkable
 from latticeville.sim.world_state import AgentState, RoomState, WorldMap, WorldState
 
 
@@ -86,9 +87,7 @@ def _pick_room_target(
 
 
 def _is_walkable(world_map: WorldMap, x: int, y: int) -> bool:
-    if x < 0 or y < 0 or y >= world_map.height or x >= world_map.width:
-        return False
-    return world_map.lines[y][x] != "#"
+    return is_walkable(world_map, x, y)
 
 
 def _move_agent_node(state: WorldState, agent_id: str, new_room_id: str) -> None:

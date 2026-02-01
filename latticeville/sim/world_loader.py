@@ -15,6 +15,7 @@ from latticeville.sim.world_state import (
     WorldMap,
     WorldState,
 )
+from latticeville.sim.world_tiles import is_walkable
 
 
 @dataclass(frozen=True)
@@ -253,6 +254,4 @@ def _find_spawn_position(
 
 
 def _is_walkable(world_map: WorldMap, x: int, y: int) -> bool:
-    if x < 0 or y < 0 or y >= world_map.height or x >= world_map.width:
-        return False
-    return world_map.lines[y][x] != "#"
+    return is_walkable(world_map, x, y)
