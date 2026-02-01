@@ -27,6 +27,9 @@ def read_key() -> InputEvent | None:
     if key == "":
         return None
     if key == "\x1b":
+        ready, _, _ = select.select([sys.stdin], [], [], 0)
+        if not ready:
+            return InputEvent(kind="key", key="ESC")
         seq = sys.stdin.read(1)
         if seq == "[":
             return _parse_csi()
