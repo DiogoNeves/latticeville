@@ -185,6 +185,7 @@ def _render_world_map(
         agents=payload.state.agent_positions,
         selected_agent_id=state.selected_agent_id,
         viewport=viewport,
+        room_areas=resources.room_bounds,
     )
     return Align.center(Group(*lines), vertical="middle")
 

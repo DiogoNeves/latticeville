@@ -22,6 +22,8 @@ TILE_STYLES = {
     "-": "blue",
 }
 
+SAND_STYLE = "yellow"
+
 OBJECT_STYLE = "bright_yellow"
 ROOM_BORDER_STYLE = "bright_magenta"
 SELECTION_STYLE = "bold bright_green"
@@ -72,6 +74,7 @@ def render_map_lines(
     selected_agent_id: str | None,
     viewport: Viewport,
     rooms: list[Bounds] | None = None,
+    room_areas: list[Bounds] | None = None,
     selection: Bounds | None = None,
     cursor: tuple[int, int] | None = None,
 ) -> list[Text]:
@@ -80,6 +83,8 @@ def render_map_lines(
         [TILE_STYLES.get(ch, "grey70") for ch in row] for row in grid
     ]
     _apply_flower_styles(grid, styles)
+    if room_areas:
+        _apply_outside_floor_styles(grid, styles, room_areas)
 
     for obj in objects.values():
         x, y = obj.position
@@ -165,6 +170,29 @@ def _apply_flower_styles(grid: list[list[str]], styles: list[list[str]]) -> None
             if ch != ";":
                 continue
             styles[y][x] = palette[(x + y) % len(palette)]
+
+
+def _apply_outside_floor_styles(
+    grid: list[list[str]], styles: list[list[str]], rooms: list[Bounds]
+) -> None:
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    if not height or not width:
+        return
+    inside = [[False] * width for _ in range(height)]
+    for bounds in rooms:
+        x0 = max(0, bounds.x)
+        y0 = max(0, bounds.y)
+        x1 = min(width - 1, bounds.x + bounds.width - 1)
+        y1 = min(height - 1, bounds.y + bounds.height - 1)
+        for y in range(y0, y1 + 1):
+            row = inside[y]
+            for x in range(x0, x1 + 1):
+                row[x] = True
+    for y, row in enumerate(grid):
+        for x, ch in enumerate(row):
+            if ch == "." and not inside[y][x]:
+                styles[y][x] = SAND_STYLE
 
 
 def _clamp(value: int, low: int, high: int) -> int:

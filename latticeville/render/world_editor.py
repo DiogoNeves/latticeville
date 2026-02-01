@@ -107,6 +107,7 @@ def _render_editor(
         selected_agent_id=None,
         viewport=viewport,
         rooms=room_bounds,
+        room_areas=room_bounds,
         selection=selection,
         cursor=state.cursor,
     )
