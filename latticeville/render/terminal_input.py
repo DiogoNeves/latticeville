@@ -27,13 +27,15 @@ def read_key() -> InputEvent | None:
     if key == "":
         return None
     if key == "\x1b":
-        ready, _, _ = select.select([sys.stdin], [], [], 0)
+        ready, _, _ = select.select([sys.stdin], [], [], 0.05)
         if not ready:
             return InputEvent(kind="key", key="ESC")
         seq = sys.stdin.read(1)
         if seq == "[":
             return _parse_csi()
-        return None
+        if seq == "O":
+            return _parse_ss3()
+        return InputEvent(kind="key", key="ESC")
     if key in {"\r", "\n"}:
         return InputEvent(kind="key", key="ENTER")
     if key == "\x7f":
@@ -61,6 +63,30 @@ def raw_terminal():
 
 
 def _parse_csi() -> InputEvent | None:
+    buffer = ""
+    while True:
+        char = sys.stdin.read(1)
+        if not char:
+            return None
+        buffer += char
+        if char.isalpha() or char == "~":
+            break
+        if char == "<":
+            return _parse_mouse_sgr()
+    if buffer == "A":
+        return InputEvent(kind="key", key="UP")
+    if buffer == "B":
+        return InputEvent(kind="key", key="DOWN")
+    if buffer == "C":
+        return InputEvent(kind="key", key="RIGHT")
+    if buffer == "D":
+        return InputEvent(kind="key", key="LEFT")
+    if buffer == "3~":
+        return InputEvent(kind="key", key="DELETE")
+    return None
+
+
+def _parse_ss3() -> InputEvent | None:
     seq = sys.stdin.read(1)
     if seq == "A":
         return InputEvent(kind="key", key="UP")
@@ -70,12 +96,6 @@ def _parse_csi() -> InputEvent | None:
         return InputEvent(kind="key", key="RIGHT")
     if seq == "D":
         return InputEvent(kind="key", key="LEFT")
-    if seq == "3":
-        end = sys.stdin.read(1)
-        if end == "~":
-            return InputEvent(kind="key", key="DELETE")
-    if seq == "<":
-        return _parse_mouse_sgr()
     return None
 
 
