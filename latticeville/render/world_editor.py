@@ -23,8 +23,6 @@ from latticeville.sim.world_state import Bounds, ObjectState, WorldMap
 
 LEFT_WIDTH = 30
 RIGHT_WIDTH = 36
-MIN_ZOOM = 1
-MAX_ZOOM = 4
 
 
 @dataclass
@@ -35,7 +33,6 @@ class EditorState:
     rooms: list[RoomDef] = field(default_factory=list)
     should_exit: bool = False
     last_message: str = ""
-    zoom: int = 1
     last_reload_at: float | None = None
 
 
@@ -82,13 +79,11 @@ def _render_editor(
     state: EditorState, resources: EditorResources, *, frame_size
 ) -> RenderableType:
     map_width, map_height = _map_panel_size(frame_size)
-    view_width = max(1, map_width // state.zoom)
-    view_height = max(1, map_height // state.zoom)
     viewport = compute_viewport(
         resources.world_map.width,
         resources.world_map.height,
-        view_width,
-        view_height,
+        map_width,
+        map_height,
         center=state.cursor,
     )
 
@@ -143,7 +138,6 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
     table.add_column("Field")
     table.add_column("Value")
     table.add_row("Cursor", f"{state.cursor[0]}, {state.cursor[1]}")
-    table.add_row("Zoom", f"{state.zoom}x")
     if state.selection_start:
         table.add_row("Top-left", f"{state.selection_start[0]}, {state.selection_start[1]}")
     else:
@@ -160,7 +154,7 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
 def _render_status_bar(state: EditorState) -> Panel:
     text = Text(
         "Editor: arrows=move | t=set top-left | b=set bottom-right | s=save | "
-        "c=clear | q=quit | zoom +/- | 0=reset | "
+        "c=clear | q=quit | "
         + _reload_label(state.last_reload_at),
         style="bold",
     )
@@ -193,18 +187,6 @@ def _handle_input(state: EditorState, resources: EditorResources) -> None:
     if key in {"b", "B"}:
         state.selection_end = state.cursor
         _maybe_commit_selection(state)
-        return
-    if key in {"+", "="}:
-        state.zoom = min(MAX_ZOOM, state.zoom + 1)
-        state.last_message = f"Zoom {state.zoom}x."
-        return
-    if key in {"-", "_"}:
-        state.zoom = max(MIN_ZOOM, state.zoom - 1)
-        state.last_message = f"Zoom {state.zoom}x."
-        return
-    if key == "0":
-        state.zoom = 1
-        state.last_message = "Zoom reset."
         return
 
     if key in {"UP", "DOWN", "LEFT", "RIGHT"}:

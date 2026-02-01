@@ -26,8 +26,6 @@ from latticeville.sim.world_utils import resolve_area_name
 
 LEFT_WIDTH = 32
 RIGHT_WIDTH = 32
-MIN_ZOOM = 1
-MAX_ZOOM = 4
 
 
 @dataclass
@@ -39,7 +37,6 @@ class MainViewerState:
     camera_mode: str = "follow"
     camera_origin: tuple[int, int] = (0, 0)
     last_tick_seen: int | None = None
-    zoom: int = 1
     last_reload_at: float | None = None
 
 
@@ -154,14 +151,7 @@ def _render_world_map(
     map_width, map_height = _map_panel_size(frame_size)
     selected_pos = _selected_agent_position(payload, state.selected_agent_id)
 
-    view_width = max(1, map_width // state.zoom)
-    view_height = max(1, map_height // state.zoom)
-
-    if (
-        state.zoom == 1
-        and map_width >= resources.world_map.width
-        and map_height >= resources.world_map.height
-    ):
+    if map_width >= resources.world_map.width and map_height >= resources.world_map.height:
         viewport = compute_viewport(
             resources.world_map.width,
             resources.world_map.height,
@@ -174,8 +164,8 @@ def _render_world_map(
             viewport = compute_viewport(
                 resources.world_map.width,
                 resources.world_map.height,
-                view_width,
-                view_height,
+                map_width,
+                map_height,
                 center=selected_pos,
             )
             state.camera_origin = (viewport.x, viewport.y)
@@ -183,8 +173,8 @@ def _render_world_map(
             viewport = compute_viewport(
                 resources.world_map.width,
                 resources.world_map.height,
-                view_width,
-                view_height,
+                map_width,
+                map_height,
                 origin=state.camera_origin,
             )
             state.camera_origin = (viewport.x, viewport.y)
@@ -434,12 +424,6 @@ def _handle_live_input(
             return paused
         if key in {"f", "F"}:
             state.camera_mode = "follow"
-        if key in {"+", "="}:
-            state.zoom = min(MAX_ZOOM, state.zoom + 1)
-        if key in {"-", "_"}:
-            state.zoom = max(MIN_ZOOM, state.zoom - 1)
-        if key == "0":
-            state.zoom = 1
         if agent_ids:
             if key == "]":
                 state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, 1)
@@ -522,7 +506,7 @@ def _render_status_bar(*, paused: bool, state: MainViewerState) -> Panel:
     label = "paused" if paused else "live"
     text = Text(
         "Main controls: space=pause | q=quit | f=follow | arrows=pan | "
-        "zoom +/- | 0=reset | [/]=cycle | 1-9=select | "
+        "[/]=cycle | 1-9=select | "
         + _reload_label(state.last_reload_at)
         + " | status="
         + label,
