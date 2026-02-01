@@ -32,6 +32,7 @@ class ObjectState:
     room_id: str
     symbol: str
     position: tuple[int, int]
+    color: str | None = None
 
 
 @dataclass(frozen=True)

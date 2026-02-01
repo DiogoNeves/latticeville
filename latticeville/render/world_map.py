@@ -90,7 +90,7 @@ def render_map_lines(
         x, y = obj.position
         if 0 <= y < world_map.height and 0 <= x < world_map.width:
             grid[y][x] = obj.symbol
-            styles[y][x] = OBJECT_STYLE
+            styles[y][x] = obj.color or OBJECT_STYLE
 
     if rooms:
         for bounds in rooms:

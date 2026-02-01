@@ -32,6 +32,17 @@ from latticeville.sim.world_tiles import is_walkable
 
 LEFT_WIDTH = 44
 RIGHT_WIDTH = 36
+OBJECT_COLORS = [
+    "yellow",
+    "blue",
+    "magenta",
+    "cyan",
+    "white",
+    "bright_yellow",
+    "bright_blue",
+    "bright_magenta",
+    "bright_cyan",
+]
 
 
 @dataclass
@@ -48,6 +59,7 @@ class EditorState:
     input_mode: str | None = None
     input_buffer: str = ""
     pending_object_name: str | None = None
+    pending_object_symbol: str | None = None
 
 
 @dataclass(frozen=True)
@@ -164,7 +176,7 @@ def _render_world_tree(
         ):
             object_label = Text()
             object_label.append(f"{obj.name} ")
-            object_label.append(obj.symbol, style=OBJECT_STYLE)
+            object_label.append(obj.symbol, style=obj.color or OBJECT_STYLE)
             object_label.append(
                 f" @ {obj.position[0]},{obj.position[1]} ({obj.object_id})"
             )
@@ -199,8 +211,13 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
     else:
         table.add_row("Bottom-right", "-")
     if state.input_mode:
-        prompt = "Object name" if state.input_mode == "object_name" else "Object char"
-        table.add_row(prompt, state.input_buffer or "…")
+        if state.input_mode == "object_name":
+            table.add_row("Object name", state.input_buffer or "…")
+        elif state.input_mode == "object_char":
+            table.add_row("Object char", state.input_buffer or "…")
+        elif state.input_mode == "object_color":
+            table.add_row("Object color", state.input_buffer or "…")
+            table.add_row("Colors", _color_options_label())
     if state.pending_object_name and state.input_mode != "object_name":
         table.add_row("Pending obj", state.pending_object_name)
     if state.last_message:
@@ -279,6 +296,7 @@ def _handle_input(
         state.input_mode = "object_name"
         state.input_buffer = ""
         state.pending_object_name = None
+        state.pending_object_symbol = None
         state.last_message = "Enter object name."
         return
 
@@ -451,6 +469,7 @@ def _load_editor_resources(*, base_dir: Path | None) -> EditorResources:
             room_id=obj.room_id or "",
             symbol=obj.symbol,
             position=obj.position,
+            color=obj.color,
         )
         for obj in config.objects
     }
@@ -616,10 +635,21 @@ def _handle_text_input(
             if not symbol:
                 state.last_message = "Object character required."
                 return
-            _create_object_at_cursor(state, resources, symbol)
+            state.pending_object_symbol = symbol
+            state.input_mode = "object_color"
+            state.input_buffer = ""
+            state.last_message = "Pick object color."
+            return
+        if state.input_mode == "object_color":
+            color = _color_from_buffer(state.input_buffer)
+            if color is None:
+                state.last_message = "Pick a valid color number."
+                return
+            _create_object_at_cursor(state, resources, state.pending_object_symbol or "*", color)
             state.input_mode = None
             state.input_buffer = ""
             state.pending_object_name = None
+            state.pending_object_symbol = None
             return
     if key in {"BACKSPACE"}:
         state.input_buffer = state.input_buffer[:-1]
@@ -635,7 +665,7 @@ def _handle_text_input(
 
 
 def _create_object_at_cursor(
-    state: EditorState, resources: EditorResources, symbol: str
+    state: EditorState, resources: EditorResources, symbol: str, color: str | None
 ) -> None:
     name = state.pending_object_name or "Object"
     obj_id = _slugify(name)
@@ -652,6 +682,7 @@ def _create_object_at_cursor(
             "name": name,
             "room_id": room_id,
             "symbol": symbol,
+            "color": color,
             "position": {"x": state.cursor[0], "y": state.cursor[1]},
         }
     )
@@ -665,6 +696,7 @@ def _create_object_at_cursor(
         room_id=room_id or "",
         symbol=symbol,
         position=state.cursor,
+        color=color,
     )
     _update_resource_mtime(resources, "world_json_mtime")
     state.last_message = f"Placed {name}."
@@ -682,6 +714,28 @@ def _dedupe_id(base: str, existing: set[str]) -> str:
     while f"{base}_{index}" in existing:
         index += 1
     return f"{base}_{index}"
+
+
+def _color_options_label() -> str:
+    return " ".join(
+        f"{index + 1}={color}"
+        for index, color in enumerate(OBJECT_COLORS)
+    )
+
+
+def _color_from_buffer(buffer: str) -> str | None:
+    text = buffer.strip()
+    if not text:
+        return None
+    if text.isdigit():
+        index = int(text) - 1
+        if 0 <= index < len(OBJECT_COLORS):
+            return OBJECT_COLORS[index]
+        return None
+    for color in OBJECT_COLORS:
+        if text.lower() == color.lower():
+            return color
+    return None
 
 
 def _reload_label(last_reload_at: float | None) -> str:

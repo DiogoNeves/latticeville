@@ -45,6 +45,7 @@ class ObjectDef:
     room_id: str | None
     symbol: str
     position: tuple[int, int]
+    color: str | None
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ def load_world_config(*, paths: WorldPaths | None = None) -> WorldConfig:
             room_id=obj.get("room_id"),
             symbol=obj.get("symbol", "*"),
             position=_parse_position(obj.get("position")),
+            color=obj.get("color"),
         )
         for obj in world_data.get("objects", [])
     ]
@@ -227,6 +229,7 @@ def _resolve_objects(
             room_id=room_id,
             symbol=obj.symbol,
             position=obj.position,
+            color=obj.color,
         )
     return resolved
 

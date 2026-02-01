@@ -296,6 +296,7 @@ def _load_viewer_resources(
             room_id=obj.room_id or "",
             symbol=obj.symbol,
             position=obj.position,
+            color=obj.color,
         )
         for obj in config.objects
     }
