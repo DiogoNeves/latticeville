@@ -33,6 +33,8 @@ def read_key() -> InputEvent | None:
         return None
     if key in {"\r", "\n"}:
         return InputEvent(kind="key", key="ENTER")
+    if key == "\x7f":
+        return InputEvent(kind="key", key="BACKSPACE")
     return InputEvent(kind="key", key=key)
 
 
@@ -65,6 +67,10 @@ def _parse_csi() -> InputEvent | None:
         return InputEvent(kind="key", key="RIGHT")
     if seq == "D":
         return InputEvent(kind="key", key="LEFT")
+    if seq == "3":
+        end = sys.stdin.read(1)
+        if end == "~":
+            return InputEvent(kind="key", key="DELETE")
     if seq == "<":
         return _parse_mouse_sgr()
     return None

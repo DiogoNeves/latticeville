@@ -43,6 +43,11 @@ class EditorState:
     should_exit: bool = False
     last_message: str = ""
     last_reload_at: float | None = None
+    paint_enabled: bool = False
+    brush: str | None = None
+    input_mode: str | None = None
+    input_buffer: str = ""
+    pending_object_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -183,6 +188,8 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
     table.add_column("Field")
     table.add_column("Value")
     table.add_row("Cursor", f"{state.cursor[0]}, {state.cursor[1]}")
+    table.add_row("Paint", "on" if state.paint_enabled else "off")
+    table.add_row("Brush", state.brush or "-")
     if state.selection_start:
         table.add_row("Top-left", f"{state.selection_start[0]}, {state.selection_start[1]}")
     else:
@@ -191,6 +198,11 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
         table.add_row("Bottom-right", f"{state.selection_end[0]}, {state.selection_end[1]}")
     else:
         table.add_row("Bottom-right", "-")
+    if state.input_mode:
+        prompt = "Object name" if state.input_mode == "object_name" else "Object char"
+        table.add_row(prompt, state.input_buffer or "…")
+    if state.pending_object_name and state.input_mode != "object_name":
+        table.add_row("Pending obj", state.pending_object_name)
     if state.last_message:
         table.add_row("Note", state.last_message)
     return table
@@ -199,7 +211,7 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
 def _render_status_bar(state: EditorState) -> Panel:
     text = Text(
         "Editor: arrows=move | t=set top-left | b=set bottom-right | s=save | "
-        "c=clear | q=quit | "
+        "space=paint | c=clear paint | del=erase | o=object | q=quit | "
         + _reload_label(state.last_reload_at),
         style="bold",
     )
@@ -222,18 +234,27 @@ def _handle_input(
         )
         if target is not None:
             state.cursor = target
+            if state.paint_enabled and state.brush:
+                _apply_brush(resources, state.cursor, state.brush)
         return
     if event.kind != "key":
         return
     key = event.key or ""
 
+    if state.input_mode:
+        _handle_text_input(state, resources, key)
+        return
+
     if key in {"q", "Q"}:
         state.should_exit = True
         return
     if key in {"c", "C"}:
-        state.selection_start = None
-        state.selection_end = None
-        state.last_message = "Selection cleared."
+        state.paint_enabled = False
+        state.brush = None
+        state.input_mode = None
+        state.input_buffer = ""
+        state.pending_object_name = None
+        state.last_message = "Paint cleared."
         return
     if key in {"s", "S"}:
         _save_rooms(state, resources)
@@ -246,9 +267,31 @@ def _handle_input(
         state.selection_end = state.cursor
         _maybe_commit_selection(state, resources)
         return
+    if key == " ":
+        if state.brush:
+            state.paint_enabled = not state.paint_enabled
+            state.last_message = "Paint on." if state.paint_enabled else "Paint off."
+        return
+    if key in {"DELETE", "BACKSPACE"}:
+        _erase_tile(state, resources)
+        return
+    if key in {"o", "O"}:
+        state.input_mode = "object_name"
+        state.input_buffer = ""
+        state.pending_object_name = None
+        state.last_message = "Enter object name."
+        return
+
+    if _is_paint_brush(key):
+        state.brush = key
+        state.paint_enabled = True
+        state.last_message = f"Brush: {key}"
+        return
 
     if key in {"UP", "DOWN", "LEFT", "RIGHT"}:
         state.cursor = _move_cursor(state.cursor, key, resources.world_map)
+        if state.paint_enabled and state.brush:
+            _apply_brush(resources, state.cursor, state.brush)
         return
 
 
@@ -520,6 +563,118 @@ def _apply_room_to_map(resources: EditorResources, bounds: Bounds) -> None:
     resources.world_map.lines[:] = updated
     resources.map_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
     _update_resource_mtime(resources, "map_mtime")
+
+
+def _apply_brush(
+    resources: EditorResources, point: tuple[int, int], brush: str
+) -> None:
+    x, y = point
+    if not (0 <= x < resources.world_map.width and 0 <= y < resources.world_map.height):
+        return
+    grid = [list(line) for line in resources.world_map.lines]
+    grid[y][x] = brush
+    updated = ["".join(row) for row in grid]
+    resources.world_map.lines[:] = updated
+    resources.map_path.write_text("\n".join(updated) + "\n", encoding="utf-8")
+    _update_resource_mtime(resources, "map_mtime")
+
+
+def _erase_tile(state: EditorState, resources: EditorResources) -> None:
+    room = _room_for_point(state.rooms, state.cursor)
+    replacement = "." if room else ","
+    _apply_brush(resources, state.cursor, replacement)
+    state.last_message = "Tile cleared."
+
+
+def _is_paint_brush(key: str) -> bool:
+    return key in {"#", ".", ",", ";", ":", "-", "+", "=", "~", "^"}
+
+
+def _handle_text_input(
+    state: EditorState, resources: EditorResources, key: str
+) -> None:
+    if key in {"ENTER"}:
+        if state.input_mode == "object_name":
+            name = state.input_buffer.strip()
+            if not name:
+                state.last_message = "Object name required."
+                return
+            state.pending_object_name = name
+            state.input_mode = "object_char"
+            state.input_buffer = ""
+            state.last_message = "Enter object character."
+            return
+        if state.input_mode == "object_char":
+            symbol = state.input_buffer.strip()[:1]
+            if not symbol:
+                state.last_message = "Object character required."
+                return
+            _create_object_at_cursor(state, resources, symbol)
+            state.input_mode = None
+            state.input_buffer = ""
+            state.pending_object_name = None
+            return
+    if key in {"BACKSPACE"}:
+        state.input_buffer = state.input_buffer[:-1]
+        return
+    if key in {"ESC"}:
+        state.input_mode = None
+        state.input_buffer = ""
+        state.pending_object_name = None
+        state.last_message = "Input cancelled."
+        return
+    if len(key) == 1 and key.isprintable():
+        state.input_buffer += key
+
+
+def _create_object_at_cursor(
+    state: EditorState, resources: EditorResources, symbol: str
+) -> None:
+    name = state.pending_object_name or "Object"
+    obj_id = _slugify(name)
+    existing_ids = {obj.object_id for obj in resources.objects.values()}
+    obj_id = _dedupe_id(obj_id, existing_ids)
+    room = _room_for_point(state.rooms, state.cursor)
+    room_id = room.room_id if room else None
+
+    payload = json.loads(resources.world_json_path.read_text(encoding="utf-8"))
+    objects = payload.get("objects", [])
+    objects.append(
+        {
+            "id": obj_id,
+            "name": name,
+            "room_id": room_id,
+            "symbol": symbol,
+            "position": {"x": state.cursor[0], "y": state.cursor[1]},
+        }
+    )
+    payload["objects"] = objects
+    resources.world_json_path.write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
+    resources.objects[obj_id] = ObjectState(
+        object_id=obj_id,
+        name=name,
+        room_id=room_id or "",
+        symbol=symbol,
+        position=state.cursor,
+    )
+    _update_resource_mtime(resources, "world_json_mtime")
+    state.last_message = f"Placed {name}."
+
+
+def _slugify(name: str) -> str:
+    safe = "".join(ch.lower() if ch.isalnum() else "_" for ch in name).strip("_")
+    return safe or "object"
+
+
+def _dedupe_id(base: str, existing: set[str]) -> str:
+    if base not in existing:
+        return base
+    index = 2
+    while f"{base}_{index}" in existing:
+        index += 1
+    return f"{base}_{index}"
 
 
 def _reload_label(last_reload_at: float | None) -> str:
