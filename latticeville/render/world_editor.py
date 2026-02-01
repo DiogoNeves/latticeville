@@ -110,7 +110,7 @@ def _render_editor(
     wrapper = Layout()
     wrapper.split_column(
         Layout(layout, ratio=1),
-        Layout(_render_status_bar(state), size=1),
+        Layout(_render_status_bar(state), size=3),
     )
     return wrapper
 

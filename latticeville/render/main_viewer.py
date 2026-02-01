@@ -483,7 +483,7 @@ def _wrap_with_status(content: object, *, paused: bool) -> Layout:
     layout = Layout()
     layout.split_column(
         Layout(content, ratio=1),
-        Layout(_render_status_bar(paused=paused), size=1),
+        Layout(_render_status_bar(paused=paused), size=3),
     )
     return layout
 
