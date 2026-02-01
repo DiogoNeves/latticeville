@@ -580,8 +580,15 @@ def _apply_brush(
 
 
 def _erase_tile(state: EditorState, resources: EditorResources) -> None:
-    room = _room_for_point(state.rooms, state.cursor)
-    replacement = "." if room else ","
+    x, y = state.cursor
+    if not (0 <= x < resources.world_map.width and 0 <= y < resources.world_map.height):
+        return
+    current = resources.world_map.lines[y][x]
+    if current == "#":
+        replacement = " "
+    else:
+        room = _room_for_point(state.rooms, state.cursor)
+        replacement = "." if room else ","
     _apply_brush(resources, state.cursor, replacement)
     state.last_message = "Tile cleared."
 
