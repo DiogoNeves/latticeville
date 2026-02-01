@@ -40,6 +40,7 @@ class MainViewerState:
     camera_origin: tuple[int, int] = (0, 0)
     last_tick_seen: int | None = None
     zoom: int = 1
+    last_reload_at: float | None = None
 
 
 @dataclass(frozen=True)
@@ -70,7 +71,7 @@ def run_main_viewer(
             paused = False
             last_payload: TickPayload | None = None
             for payload in payloads:
-                resources = _maybe_reload_resources(resources)
+                resources = _maybe_reload_resources(resources, state)
                 _sync_state_for_payload(payload, state)
                 paused = _handle_live_input(state, payload, paused, resources)
                 if paused:
@@ -83,12 +84,12 @@ def run_main_viewer(
                     payload, resources, state, frame_size=console.size
                 )
                 last_payload = payload
-                live.update(_wrap_with_status(renderable, paused=False), refresh=True)
+                live.update(_wrap_with_status(renderable, paused=False, state=state), refresh=True)
                 if state.should_exit:
                     break
                 time.sleep(tick_delay)
             while last_payload is not None and not state.should_exit:
-                resources = _maybe_reload_resources(resources)
+                resources = _maybe_reload_resources(resources, state)
                 _sync_state_for_payload(last_payload, state)
                 paused = _handle_live_input(state, last_payload, paused, resources)
                 if paused:
@@ -98,7 +99,7 @@ def run_main_viewer(
                 renderable = _render_with_state(
                     last_payload, resources, state, frame_size=console.size
                 )
-                live.update(_wrap_with_status(renderable, paused=False), refresh=True)
+                live.update(_wrap_with_status(renderable, paused=False, state=state), refresh=True)
                 time.sleep(tick_delay)
 
 
@@ -488,10 +489,10 @@ def _pause_loop(
     state: MainViewerState,
 ) -> ViewerResources:
     while not state.should_exit:
-        resources = _maybe_reload_resources(resources)
+        resources = _maybe_reload_resources(resources, state)
         paused = _handle_live_input(state, payload, paused=True, resources=resources)
         renderable = _render_with_state(payload, resources, state, frame_size=live.console.size)
-        live.update(_wrap_with_status(renderable, paused=True), refresh=True)
+        live.update(_wrap_with_status(renderable, paused=True, state=state), refresh=True)
         if not paused:
             break
         time.sleep(0.05)
@@ -505,29 +506,34 @@ def _render_and_update(
     state: MainViewerState,
 ) -> None:
     renderable = _render_with_state(payload, resources, state, frame_size=live.console.size)
-    live.update(_wrap_with_status(renderable, paused=True), refresh=True)
+    live.update(_wrap_with_status(renderable, paused=True, state=state), refresh=True)
 
 
-def _wrap_with_status(content: object, *, paused: bool) -> Layout:
+def _wrap_with_status(content: object, *, paused: bool, state: MainViewerState) -> Layout:
     layout = Layout()
     layout.split_column(
         Layout(content, ratio=1),
-        Layout(_render_status_bar(paused=paused), size=3),
+        Layout(_render_status_bar(paused=paused, state=state), size=3),
     )
     return layout
 
 
-def _render_status_bar(*, paused: bool) -> Panel:
+def _render_status_bar(*, paused: bool, state: MainViewerState) -> Panel:
     label = "paused" if paused else "live"
     text = Text(
         "Main controls: space=pause | q=quit | f=follow | arrows=pan | "
-        "zoom +/- | 0=reset | [/]=cycle | 1-9=select | status=" + label,
+        "zoom +/- | 0=reset | [/]=cycle | 1-9=select | "
+        + _reload_label(state.last_reload_at)
+        + " | status="
+        + label,
         style="bold",
     )
     return Panel(text, padding=(0, 1))
 
 
-def _maybe_reload_resources(resources: ViewerResources) -> ViewerResources:
+def _maybe_reload_resources(
+    resources: ViewerResources, state: MainViewerState
+) -> ViewerResources:
     world_json_mtime = _path_mtime(resources.world_json_path)
     map_mtime = _path_mtime(resources.map_path)
     if (
@@ -536,11 +542,13 @@ def _maybe_reload_resources(resources: ViewerResources) -> ViewerResources:
     ):
         return resources
     try:
-        return _load_viewer_resources(
+        new_resources = _load_viewer_resources(
             config=None, base_dir=resources.world_json_path.parent
         )
     except FileNotFoundError:
         return resources
+    state.last_reload_at = time.time()
+    return new_resources
 
 
 def _path_mtime(path: Path) -> float | None:
@@ -548,6 +556,13 @@ def _path_mtime(path: Path) -> float | None:
         return path.stat().st_mtime
     except FileNotFoundError:
         return None
+
+
+def _reload_label(last_reload_at: float | None) -> str:
+    if last_reload_at is None:
+        return "reload: -"
+    stamp = time.strftime("%H:%M:%S", time.localtime(last_reload_at))
+    return f"reload: {stamp}"
 
 
 def _cycle(agent_ids: list[str], current: str | None, delta: int) -> str:

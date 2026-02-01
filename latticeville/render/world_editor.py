@@ -36,6 +36,7 @@ class EditorState:
     should_exit: bool = False
     last_message: str = ""
     zoom: int = 1
+    last_reload_at: float | None = None
 
 
 @dataclass(frozen=True)
@@ -159,7 +160,8 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
 def _render_status_bar(state: EditorState) -> Panel:
     text = Text(
         "Editor: arrows=move | t=set top-left | b=set bottom-right | s=save | "
-        "c=clear | q=quit | zoom +/- | 0=reset",
+        "c=clear | q=quit | zoom +/- | 0=reset | "
+        + _reload_label(state.last_reload_at),
         style="bold",
     )
     return Panel(text, padding=(0, 1))
@@ -354,6 +356,7 @@ def _maybe_reload_resources(
     if state.selection_end:
         state.selection_end = _clamp_point(state.selection_end, new_resources.world_map)
     state.last_message = "Reloaded world files."
+    state.last_reload_at = time.time()
     return new_resources
 
 
@@ -369,3 +372,10 @@ def _path_mtime(path: Path) -> float | None:
         return path.stat().st_mtime
     except FileNotFoundError:
         return None
+
+
+def _reload_label(last_reload_at: float | None) -> str:
+    if last_reload_at is None:
+        return "reload: -"
+    stamp = time.strftime("%H:%M:%S", time.localtime(last_reload_at))
+    return f"reload: {stamp}"
