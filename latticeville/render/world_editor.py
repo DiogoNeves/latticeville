@@ -51,6 +51,9 @@ class EditorResources:
     world_map: WorldMap
     objects: dict[str, ObjectState]
     world_json_path: Path
+    map_path: Path
+    world_json_mtime: float | None
+    map_mtime: float | None
 
 
 def run_world_editor(*, base_dir: Path | None = None) -> None:
@@ -65,6 +68,7 @@ def run_world_editor(*, base_dir: Path | None = None) -> None:
         with Live(console=console, auto_refresh=False, screen=True) as live:
             try:
                 while not state.should_exit:
+                    resources = _maybe_reload_resources(state, resources)
                     _handle_input(state, resources)
                     renderable = _render_editor(state, resources, frame_size=console.size)
                     live.update(renderable, refresh=True)
@@ -283,9 +287,10 @@ def _save_rooms(state: EditorState, resources: EditorResources) -> None:
 
 
 def _load_editor_resources(*, base_dir: Path | None) -> EditorResources:
-    config = load_world_config()
     base_dir = base_dir or WorldPaths().base_dir
-    world_json_path = base_dir / "world.json"
+    paths = WorldPaths(base_dir=base_dir)
+    config = load_world_config(paths=paths)
+    world_json_path = paths.world_json
     map_path = base_dir / config.map_file
     world_map = _load_world_map(map_path)
     objects = {
@@ -303,6 +308,9 @@ def _load_editor_resources(*, base_dir: Path | None) -> EditorResources:
         world_map=world_map,
         objects=objects,
         world_json_path=world_json_path,
+        map_path=map_path,
+        world_json_mtime=_path_mtime(world_json_path),
+        map_mtime=_path_mtime(map_path),
     )
 
 
@@ -319,3 +327,45 @@ def _map_panel_size(frame_size) -> tuple[int, int]:
     width = max(10, frame_size.width - LEFT_WIDTH - RIGHT_WIDTH - 6)
     height = max(6, frame_size.height - 3)
     return (max(1, width - 2), max(1, height - 2))
+
+
+def _maybe_reload_resources(
+    state: EditorState, resources: EditorResources
+) -> EditorResources:
+    world_json_mtime = _path_mtime(resources.world_json_path)
+    map_mtime = _path_mtime(resources.map_path)
+    if (
+        world_json_mtime == resources.world_json_mtime
+        and map_mtime == resources.map_mtime
+    ):
+        return resources
+    try:
+        new_resources = _load_editor_resources(base_dir=resources.world_json_path.parent)
+    except FileNotFoundError as exc:
+        state.last_message = f"Reload failed: {exc}"
+        return resources
+
+    state.rooms = [
+        RoomDef(room.id, room.name, room.bounds) for room in new_resources.config.rooms
+    ]
+    state.cursor = _clamp_point(state.cursor, new_resources.world_map)
+    if state.selection_start:
+        state.selection_start = _clamp_point(state.selection_start, new_resources.world_map)
+    if state.selection_end:
+        state.selection_end = _clamp_point(state.selection_end, new_resources.world_map)
+    state.last_message = "Reloaded world files."
+    return new_resources
+
+
+def _clamp_point(point: tuple[int, int], world_map: WorldMap) -> tuple[int, int]:
+    x, y = point
+    x = max(0, min(world_map.width - 1, x))
+    y = max(0, min(world_map.height - 1, y))
+    return (x, y)
+
+
+def _path_mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return None

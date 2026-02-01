@@ -48,6 +48,10 @@ class ViewerResources:
     world_map: WorldMap
     objects: dict[str, ObjectState]
     room_bounds: list[Bounds]
+    world_json_path: Path
+    map_path: Path
+    world_json_mtime: float | None
+    map_mtime: float | None
 
 
 def run_main_viewer(
@@ -66,12 +70,13 @@ def run_main_viewer(
             paused = False
             last_payload: TickPayload | None = None
             for payload in payloads:
+                resources = _maybe_reload_resources(resources)
                 _sync_state_for_payload(payload, state)
                 paused = _handle_live_input(state, payload, paused, resources)
                 if paused:
                     last_payload = payload
                     _render_and_update(live, payload, resources, state)
-                    _pause_loop(live, payload, resources, state)
+                    resources = _pause_loop(live, payload, resources, state)
                     paused = False
                     continue
                 renderable = _render_with_state(
@@ -83,10 +88,11 @@ def run_main_viewer(
                     break
                 time.sleep(tick_delay)
             while last_payload is not None and not state.should_exit:
+                resources = _maybe_reload_resources(resources)
                 _sync_state_for_payload(last_payload, state)
                 paused = _handle_live_input(state, last_payload, paused, resources)
                 if paused:
-                    _pause_loop(live, last_payload, resources, state)
+                    resources = _pause_loop(live, last_payload, resources, state)
                     paused = False
                     continue
                 renderable = _render_with_state(
@@ -286,8 +292,9 @@ def _render_selected_agent(
 def _load_viewer_resources(
     *, config: WorldConfig | None, base_dir: Path | None
 ) -> ViewerResources:
-    config = config or load_world_config()
     base_dir = base_dir or WorldPaths().base_dir
+    paths = WorldPaths(base_dir=base_dir)
+    config = config or load_world_config(paths=paths)
     map_path = base_dir / config.map_file
     world_map = _load_world_map(map_path)
     objects = {
@@ -306,6 +313,10 @@ def _load_viewer_resources(
         world_map=world_map,
         objects=objects,
         room_bounds=room_bounds,
+        world_json_path=paths.world_json,
+        map_path=map_path,
+        world_json_mtime=_path_mtime(paths.world_json),
+        map_mtime=_path_mtime(map_path),
     )
 
 
@@ -475,14 +486,16 @@ def _pause_loop(
     payload: TickPayload,
     resources: ViewerResources,
     state: MainViewerState,
-) -> None:
+) -> ViewerResources:
     while not state.should_exit:
+        resources = _maybe_reload_resources(resources)
         paused = _handle_live_input(state, payload, paused=True, resources=resources)
         renderable = _render_with_state(payload, resources, state, frame_size=live.console.size)
         live.update(_wrap_with_status(renderable, paused=True), refresh=True)
         if not paused:
             break
         time.sleep(0.05)
+    return resources
 
 
 def _render_and_update(
@@ -512,6 +525,29 @@ def _render_status_bar(*, paused: bool) -> Panel:
         style="bold",
     )
     return Panel(text, padding=(0, 1))
+
+
+def _maybe_reload_resources(resources: ViewerResources) -> ViewerResources:
+    world_json_mtime = _path_mtime(resources.world_json_path)
+    map_mtime = _path_mtime(resources.map_path)
+    if (
+        world_json_mtime == resources.world_json_mtime
+        and map_mtime == resources.map_mtime
+    ):
+        return resources
+    try:
+        return _load_viewer_resources(
+            config=None, base_dir=resources.world_json_path.parent
+        )
+    except FileNotFoundError:
+        return resources
+
+
+def _path_mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return None
 
 
 def _cycle(agent_ids: list[str], current: str | None, delta: int) -> str:
