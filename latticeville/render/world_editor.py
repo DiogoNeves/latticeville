@@ -17,7 +17,13 @@ from rich.text import Text
 from rich.live import Live
 
 from latticeville.render.terminal_input import raw_terminal, read_key
-from latticeville.render.world_map import compute_viewport, render_map_lines
+from latticeville.render.world_map import (
+    AGENT_STYLE,
+    OBJECT_STYLE,
+    TILE_STYLES,
+    compute_viewport,
+    render_map_lines,
+)
 from latticeville.sim.world_loader import WorldConfig, WorldPaths, load_world_config
 from latticeville.sim.world_state import Bounds, ObjectState, WorldMap
 
@@ -125,22 +131,41 @@ def _render_editor(
 def _render_world_tree(
     state: EditorState, resources: EditorResources
 ) -> RenderableType:
-    tree = Tree("World", guide_style="grey50")
+    wall_style = TILE_STYLES.get("#", "grey50")
+    tree = Tree(Text("World", style=wall_style), guide_style=wall_style)
     objects_by_room: dict[str, list[ObjectState]] = {}
     for obj in resources.objects.values():
         objects_by_room.setdefault(obj.room_id or "", []).append(obj)
+    characters_by_room: dict[str, list] = {}
+    for char in resources.config.characters:
+        characters_by_room.setdefault(char.start_room_id, []).append(char)
 
     for room in state.rooms:
         bounds = room.bounds
-        room_label = (
+        room_label = Text(
             f"{bounds.x},{bounds.y} {bounds.width}x{bounds.height} "
-            f"{room.room_id} ({room.name})"
+            f"{room.room_id} ({room.name})",
+            style=wall_style,
         )
         room_node = tree.add(room_label)
         for obj in sorted(
             objects_by_room.get(room.room_id, []), key=lambda o: o.object_id
         ):
-            room_node.add(f"{obj.object_id} ({obj.name})")
+            object_label = Text()
+            object_label.append(f"{obj.name} ")
+            object_label.append(obj.symbol, style=OBJECT_STYLE)
+            object_label.append(
+                f" @ {obj.position[0]},{obj.position[1]} ({obj.object_id})"
+            )
+            room_node.add(object_label)
+        for char in sorted(
+            characters_by_room.get(room.room_id, []), key=lambda c: c.id
+        ):
+            character_label = Text()
+            character_label.append(f"{char.name} ")
+            character_label.append(char.symbol, style=AGENT_STYLE)
+            character_label.append(f" ({char.id})")
+            room_node.add(character_label)
 
     if not state.rooms:
         tree.add("No rooms defined")
@@ -393,11 +418,14 @@ def _reload_label(last_reload_at: float | None) -> str:
 def _selection_summary(state: EditorState, resources: EditorResources) -> Text:
     cursor = state.cursor
     room = _room_for_point(state.rooms, cursor)
-    obj = _object_for_point(resources.objects, cursor)
+    char = _character_for_point(resources, state.rooms, cursor)
+    obj = _object_for_point(resources.objects, cursor) if char is None else None
     path_parts = ["World"]
     if room:
         path_parts.append(room.name)
-    if obj:
+    if char:
+        path_parts.append(char.name)
+    elif obj:
         path_parts.append(obj.name)
     path = " / ".join(path_parts)
 
@@ -428,3 +456,47 @@ def _object_for_point(
         if obj.position == point:
             return obj
     return None
+
+
+def _character_for_point(
+    resources: EditorResources, rooms: list[RoomDef], point: tuple[int, int]
+):
+    positions = _character_positions(resources, rooms)
+    for char in resources.config.characters:
+        if positions.get(char.id) == point:
+            return char
+    return None
+
+
+def _character_positions(
+    resources: EditorResources, rooms: list[RoomDef]
+) -> dict[str, tuple[int, int]]:
+    room_map = {room.room_id: room.bounds for room in rooms}
+    blocked = {obj.position for obj in resources.objects.values()}
+    positions: dict[str, tuple[int, int]] = {}
+    for char in resources.config.characters:
+        bounds = room_map.get(char.start_room_id)
+        if bounds is None:
+            continue
+        positions[char.id] = _find_spawn_position(
+            resources.world_map, bounds, blocked
+        )
+    return positions
+
+
+def _find_spawn_position(
+    world_map: WorldMap, bounds: Bounds, blocked: set[tuple[int, int]]
+) -> tuple[int, int]:
+    for y in range(bounds.y + 1, bounds.y + bounds.height - 1):
+        for x in range(bounds.x + 1, bounds.x + bounds.width - 1):
+            if (x, y) in blocked:
+                continue
+            if _is_walkable(world_map, x, y):
+                return (x, y)
+    return (bounds.x + 1, bounds.y + 1)
+
+
+def _is_walkable(world_map: WorldMap, x: int, y: int) -> bool:
+    if x < 0 or y < 0 or y >= world_map.height or x >= world_map.width:
+        return False
+    return world_map.lines[y][x] != "#"
