@@ -32,16 +32,6 @@
       }
     },
     {
-      "id": "street",
-      "name": "Street",
-      "bounds": {
-        "x": 2,
-        "y": 8,
-        "width": 56,
-        "height": 7
-      }
-    },
-    {
       "id": "park",
       "name": "Park",
       "bounds": {
