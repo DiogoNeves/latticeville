@@ -19,23 +19,32 @@ class InputEvent:
     button: int | None = None
 
 
+_INPUT_BUFFER = ""
+
+
 def read_key() -> InputEvent | None:
-    ready, _, _ = select.select([sys.stdin], [], [], 0)
-    if not ready:
-        return None
-    key = sys.stdin.read(1)
-    if key == "":
-        return None
-    if key == "\x1b":
-        ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+    global _INPUT_BUFFER
+    while True:
+        ready, _, _ = select.select([sys.stdin], [], [], 0)
         if not ready:
-            return InputEvent(kind="key", key="ESC")
-        seq = sys.stdin.read(1)
-        if seq == "[":
-            return _parse_csi()
-        if seq == "O":
-            return _parse_ss3()
-        return InputEvent(kind="key", key="ESC")
+            break
+        chunk = sys.stdin.read(1)
+        if chunk == "":
+            break
+        _INPUT_BUFFER += chunk
+
+    if not _INPUT_BUFFER:
+        return None
+
+    if _INPUT_BUFFER[0] == "\x1b":
+        event, consumed = _parse_escape_sequence(_INPUT_BUFFER)
+        if event is None:
+            return None
+        _INPUT_BUFFER = _INPUT_BUFFER[consumed:]
+        return event
+
+    key = _INPUT_BUFFER[0]
+    _INPUT_BUFFER = _INPUT_BUFFER[1:]
     if key in {"\r", "\n"}:
         return InputEvent(kind="key", key="ENTER")
     if key == "\x7f":
@@ -62,32 +71,56 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def _parse_csi() -> InputEvent | None:
-    buffer = ""
-    while True:
-        char = sys.stdin.read(1)
-        if not char:
-            return None
-        buffer += char
-        if char.isalpha() or char == "~":
-            break
-        if char == "<":
-            return _parse_mouse_sgr()
-    if buffer == "A":
+def _parse_escape_sequence(buffer: str) -> tuple[InputEvent | None, int]:
+    if buffer == "\x1b":
+        return InputEvent(kind="key", key="ESC"), 1
+    if buffer.startswith("\x1b["):
+        if len(buffer) < 3:
+            return None, 0
+        if buffer[2] == "<":
+            end_m = buffer.find("m", 3)
+            end_M = buffer.find("M", 3)
+            end = min(
+                [idx for idx in (end_m, end_M) if idx != -1],
+                default=-1,
+            )
+            if end == -1:
+                return None, 0
+            payload = buffer[3:end]
+            char = buffer[end]
+            event = _parse_mouse_payload(payload, char)
+            return event, end + 1
+
+        for idx in range(2, len(buffer)):
+            char = buffer[idx]
+            if char.isalpha() or char == "~":
+                seq = buffer[2 : idx + 1]
+                event = _parse_csi_sequence(seq)
+                return event, idx + 1
+        return None, 0
+    if buffer.startswith("\x1bO"):
+        if len(buffer) < 3:
+            return None, 0
+        event = _parse_ss3_sequence(buffer[2])
+        return event, 3
+    return InputEvent(kind="key", key="ESC"), 1
+
+
+def _parse_csi_sequence(seq: str) -> InputEvent | None:
+    if seq == "A":
         return InputEvent(kind="key", key="UP")
-    if buffer == "B":
+    if seq == "B":
         return InputEvent(kind="key", key="DOWN")
-    if buffer == "C":
+    if seq == "C":
         return InputEvent(kind="key", key="RIGHT")
-    if buffer == "D":
+    if seq == "D":
         return InputEvent(kind="key", key="LEFT")
-    if buffer == "3~":
+    if seq == "3~":
         return InputEvent(kind="key", key="DELETE")
     return None
 
 
-def _parse_ss3() -> InputEvent | None:
-    seq = sys.stdin.read(1)
+def _parse_ss3_sequence(seq: str) -> InputEvent | None:
     if seq == "A":
         return InputEvent(kind="key", key="UP")
     if seq == "B":
@@ -99,15 +132,9 @@ def _parse_ss3() -> InputEvent | None:
     return None
 
 
-def _parse_mouse_sgr() -> InputEvent | None:
-    buffer = ""
-    while True:
-        char = sys.stdin.read(1)
-        if char in {"m", "M"}:
-            break
-        buffer += char
+def _parse_mouse_payload(payload: str, char: str) -> InputEvent | None:
     try:
-        parts = buffer.split(";")
+        parts = payload.split(";")
         button = int(parts[0])
         x = int(parts[1])
         y = int(parts[2])
