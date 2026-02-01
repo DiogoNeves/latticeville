@@ -99,10 +99,11 @@ def _render_editor(
     selection = _selection_bounds(state)
     room_bounds = [room.bounds for room in state.rooms]
 
+    characters = _character_positions(resources, state.rooms)
     lines = render_map_lines(
         resources.world_map,
         objects=resources.objects,
-        agents={},
+        agents=characters,
         selected_agent_id=None,
         viewport=viewport,
         rooms=room_bounds,
