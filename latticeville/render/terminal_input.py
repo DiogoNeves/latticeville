@@ -21,6 +21,7 @@ class InputEvent:
 
 _BUFFER = ""
 _SEQ_WAIT = 0.02
+_SEQ_MAX_WAIT = 0.08
 
 
 def read_key() -> InputEvent | None:
@@ -29,8 +30,20 @@ def read_key() -> InputEvent | None:
         return None
     event, consumed = _parse_buffer(_BUFFER)
     if event is None and _BUFFER.startswith("\x1b"):
-        _read_available(_SEQ_WAIT)
-        event, consumed = _parse_buffer(_BUFFER)
+        waited = 0.0
+        last_len = len(_BUFFER)
+        while waited < _SEQ_MAX_WAIT:
+            _read_available(_SEQ_WAIT)
+            event, consumed = _parse_buffer(_BUFFER)
+            if event is not None:
+                break
+            if len(_BUFFER) == last_len:
+                break
+            last_len = len(_BUFFER)
+            waited += _SEQ_WAIT
+        if event is None and _BUFFER.startswith("\x1b"):
+            _consume(1)
+            return None
     if consumed:
         _consume(consumed)
     return event
