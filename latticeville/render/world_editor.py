@@ -11,12 +11,11 @@ from rich.align import Align
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
-from rich.tree import Tree
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.events import Key
 from textual.screen import Screen
-from textual.widgets import Static
+from textual.widgets import Static, Tree
 from textual.containers import Horizontal, Vertical
 
 from latticeville.render.textual_app import LatticevilleApp
@@ -66,6 +65,7 @@ class EditorState:
     pending_object_symbol: str | None = None
     pending_object_id: str | None = None
     unsaved_rooms: bool = False
+    tree_dirty: bool = True
 
 
 @dataclass(frozen=True)
@@ -90,6 +90,10 @@ class WorldEditorScreen(Screen):
     CSS = """
     Screen {
         layout: vertical;
+    }
+    #world-tree {
+        border: tall $accent;
+        border-title: "World Tree";
     }
     #main {
         layout: horizontal;
@@ -134,7 +138,7 @@ class WorldEditorScreen(Screen):
                 for room in self.resources.config.rooms
             ],
         )
-        self._world_tree: Static | None = None
+        self._world_tree: Tree | None = None
         self._selection_bar: Static | None = None
         self._editor_panel: Static | None = None
         self._status_bar: Static | None = None
@@ -143,7 +147,7 @@ class WorldEditorScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical(id="root"):
             with Horizontal(id="main"):
-                yield Static(id="world-tree")
+                yield Tree("World", id="world-tree")
                 with Vertical(id="center-pane"):
                     yield Static(id="selection-bar")
                     yield MapWidget(
@@ -155,12 +159,14 @@ class WorldEditorScreen(Screen):
             yield Static(id="status-bar")
 
     def on_mount(self) -> None:
-        self._world_tree = self.query_one("#world-tree", Static)
+        self._world_tree = self.query_one("#world-tree", Tree)
         self._selection_bar = self.query_one("#selection-bar", Static)
         self._editor_panel = self.query_one("#editor-panel", Static)
         self._status_bar = self.query_one("#status-bar", Static)
         self._map_widget = self.query_one(MapWidget)
         self._world_tree.styles.width = LEFT_WIDTH
+        self._world_tree.can_focus = False
+        self._world_tree.show_root = True
         self._editor_panel.styles.width = RIGHT_WIDTH
         self._refresh_ui()
         self.set_interval(0.15, self._tick)
@@ -169,15 +175,13 @@ class WorldEditorScreen(Screen):
         refreshed = _maybe_reload_resources(self.state, self.resources)
         if refreshed is not self.resources:
             self.resources = refreshed
+            self.state.tree_dirty = True
             self._refresh_ui()
 
     def _refresh_ui(self) -> None:
-        if self._world_tree:
-            self._world_tree.update(
-                Panel(
-                    _render_world_tree(self.state, self.resources), title="World Tree"
-                )
-            )
+        if self._world_tree and self.state.tree_dirty:
+            _populate_world_tree(self._world_tree, self.state, self.resources)
+            self.state.tree_dirty = False
         if self._selection_bar:
             self._selection_bar.update(
                 Panel(_selection_summary(self.state, self.resources), title="Selection")
@@ -286,6 +290,7 @@ class WorldEditorScreen(Screen):
             return
         self.state.selection_end = self.state.cursor
         _maybe_commit_selection(self.state, self.resources)
+        self.state.tree_dirty = True
         self._refresh_ui()
 
     def action_save(self) -> None:
@@ -329,6 +334,7 @@ class WorldEditorScreen(Screen):
         if self.state.input_mode:
             return
         _erase_tile(self.state, self.resources)
+        self.state.tree_dirty = True
         self._refresh_ui()
 
     def action_create_object(self) -> None:
@@ -361,12 +367,13 @@ def run_world_editor(*, base_dir: Path | None = None) -> None:
     app.run()
 
 
-def _render_world_tree(
-    state: EditorState, resources: EditorResources
-) -> RenderableType:
+def _populate_world_tree(
+    tree: Tree, state: EditorState, resources: EditorResources
+) -> None:
     wall_style = TILE_STYLES.get("#", "grey50")
     room_style = ROOM_BORDER_STYLE
-    tree = Tree(Text("World", style=wall_style), guide_style=wall_style)
+    tree.reset(Text("World", style=wall_style))
+    root = tree.root
     objects_by_room: dict[str, list[ObjectState]] = {}
     for obj in resources.objects.values():
         objects_by_room.setdefault(obj.room_id or "", []).append(obj)
@@ -377,33 +384,33 @@ def _render_world_tree(
     for room in state.rooms:
         bounds = room.bounds
         room_label = Text(
-            f"{bounds.x},{bounds.y} {bounds.width}x{bounds.height} "
-            f"{room.room_id} ({room.name})",
+            f"{room.name} {bounds.x},{bounds.y} {bounds.width}x{bounds.height} "
+            f"({room.room_id})",
             style=room_style,
         )
-        room_node = tree.add(room_label)
+        room_node = root.add(room_label)
         for obj in sorted(
             objects_by_room.get(room.room_id, []), key=lambda o: o.object_id
         ):
             object_label = Text()
             object_label.append(f"{obj.name} ")
-            object_label.append(obj.symbol, style=obj.color or OBJECT_STYLE)
             object_label.append(
-                f" @ {obj.position[0]},{obj.position[1]} ({obj.object_id})"
+                f"{obj.position[0]},{obj.position[1]} ({obj.object_id}) "
             )
+            object_label.append(obj.symbol, style=obj.color or OBJECT_STYLE)
             room_node.add(object_label)
         for char in sorted(
             characters_by_room.get(room.room_id, []), key=lambda c: c.id
         ):
             character_label = Text()
             character_label.append(f"{char.name} ")
+            character_label.append(f"({char.id}) ")
             character_label.append(char.symbol, style=AGENT_STYLE)
-            character_label.append(f" ({char.id})")
             room_node.add(character_label)
 
     if not state.rooms:
-        tree.add("No rooms defined")
-    return tree
+        root.add("No rooms defined")
+    root.expand()
 
 
 def _render_editor_panel(state: EditorState) -> RenderableType:
@@ -479,6 +486,7 @@ def _maybe_commit_selection(state: EditorState, resources: EditorResources) -> N
     state.rooms.append(RoomDef(room_id=room_id, name=name, bounds=bounds))
     _apply_room_to_map(resources, bounds)
     state.unsaved_rooms = True
+    state.tree_dirty = True
     state.selection_start = None
     state.selection_end = None
     state.last_message = f"Added {name} and fenced map."
@@ -565,14 +573,6 @@ def _load_world_map(path: Path) -> WorldMap:
     width = max((len(line) for line in lines), default=0)
     padded = [line.ljust(width) for line in lines]
     return WorldMap(lines=padded, width=width, height=len(padded))
-
-
-def _map_panel_size(frame_size) -> tuple[int, int]:
-    if frame_size is None:
-        return (80, 24)
-    width = max(10, frame_size.width - LEFT_WIDTH - RIGHT_WIDTH - 6)
-    height = max(6, frame_size.height - 3)
-    return (max(1, width - 2), max(1, height - 2))
 
 
 def _maybe_reload_resources(
@@ -730,6 +730,7 @@ def _handle_text_input(
             _create_object_at_cursor(
                 state, resources, state.pending_object_symbol or "*", color
             )
+            state.tree_dirty = True
             state.input_mode = None
             state.input_buffer = ""
             state.pending_object_name = None
@@ -743,6 +744,7 @@ def _handle_text_input(
             if state.pending_object_id:
                 _update_object_color(resources, state.pending_object_id, color)
                 state.last_message = "Object color updated."
+                state.tree_dirty = True
             state.input_mode = None
             state.input_buffer = ""
             state.pending_object_id = None
@@ -797,6 +799,7 @@ def _create_object_at_cursor(
         color=color,
     )
     _update_resource_mtime(resources, "world_json_mtime")
+    state.tree_dirty = True
     state.last_message = f"Placed {name}."
 
 
