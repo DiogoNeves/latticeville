@@ -93,7 +93,6 @@ class WorldEditorScreen(Screen):
     }
     #world-tree {
         border: tall $accent;
-        border-title: "World Tree";
     }
     #main {
         layout: horizontal;
@@ -167,6 +166,7 @@ class WorldEditorScreen(Screen):
         self._world_tree.styles.width = LEFT_WIDTH
         self._world_tree.can_focus = False
         self._world_tree.show_root = True
+        self._world_tree.border_title = "World Tree"
         self._editor_panel.styles.width = RIGHT_WIDTH
         self._refresh_ui()
         self.set_interval(0.15, self._tick)
