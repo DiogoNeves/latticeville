@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -9,14 +10,19 @@ from pathlib import Path
 from typing import Iterable
 
 from rich.align import Align
-from rich.console import Console, Group, RenderableType
+from rich.console import Group, RenderableType
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
-from rich.live import Live
+from textual.app import ComposeResult
+from textual.events import Key
+from textual.screen import Screen
+from textual.widgets import Label, ListItem, ListView, Static
+from textual.containers import Horizontal, Vertical
 
-from latticeville.render.terminal_input import raw_terminal, read_key
+from latticeville.render.textual_app import LatticevilleApp
+from latticeville.render.textual_widgets import MapRenderResult, MapWidget
 from latticeville.render.world_map import compute_viewport, render_map_lines
 from latticeville.sim.contracts import TickPayload
 from latticeville.sim.world_loader import WorldConfig, WorldPaths, load_world_config
@@ -52,6 +58,329 @@ class ViewerResources:
     map_mtime: float | None
 
 
+class AgentListItem(ListItem):
+    def __init__(self, agent_id: str, label: str) -> None:
+        super().__init__(Label(label))
+        self.agent_id = agent_id
+
+
+class BaseViewerScreen(Screen):
+    CSS = """
+    Screen {
+        layout: vertical;
+    }
+    #main {
+        layout: horizontal;
+        height: 1fr;
+    }
+    #right-pane {
+        layout: vertical;
+    }
+    #status-bar {
+        height: 3;
+    }
+    """
+
+    def __init__(
+        self,
+        *,
+        resources: ViewerResources,
+        state: MainViewerState | None = None,
+    ) -> None:
+        super().__init__()
+        self.resources = resources
+        self.state = state or MainViewerState()
+        self.payload: TickPayload | None = None
+        self._events_panel: Static | None = None
+        self._map_widget: MapWidget | None = None
+        self._agent_list: ListView | None = None
+        self._agent_details: Static | None = None
+        self._status_bar: Static | None = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="root"):
+            with Horizontal(id="main"):
+                yield Static(id="events-pane")
+                yield MapWidget(self._render_map, id="world-map")
+                with Vertical(id="right-pane"):
+                    yield ListView(id="agent-list")
+                    yield Static(id="agent-details")
+            yield Static(id="status-bar")
+
+    def on_mount(self) -> None:
+        self._events_panel = self.query_one("#events-pane", Static)
+        self._map_widget = self.query_one("#world-map", MapWidget)
+        self._agent_list = self.query_one("#agent-list", ListView)
+        self._agent_details = self.query_one("#agent-details", Static)
+        self._status_bar = self.query_one("#status-bar", Static)
+        if self._events_panel:
+            self._events_panel.styles.width = LEFT_WIDTH
+        right_pane = self.query_one("#right-pane")
+        right_pane.styles.width = RIGHT_WIDTH
+        if self._agent_list:
+            self._agent_list.styles.height = "1fr"
+            self._agent_list.can_focus = False
+        if self._agent_details:
+            self._agent_details.styles.height = "1fr"
+        self._refresh_ui()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        self._select_from_list(event.item)
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        self._select_from_list(event.item)
+
+    def _select_from_list(self, item: ListItem | None) -> None:
+        if not isinstance(item, AgentListItem):
+            return
+        self.state.selected_agent_id = item.agent_id
+        self._refresh_ui()
+
+    def on_key(self, event: Key) -> None:
+        if self.payload is None:
+            return
+        if event.key in {"[", "]"}:
+            agent_ids = _agent_ids(self.payload)
+            delta = 1 if event.key == "]" else -1
+            self.state.selected_agent_id = _cycle(
+                agent_ids, self.state.selected_agent_id, delta
+            )
+            self._refresh_ui()
+            event.stop()
+            return
+        if event.character and event.character.isdigit() and event.character != "0":
+            agent_ids = _agent_ids(self.payload)
+            selected = map_character_index(agent_ids, int(event.character) - 1)
+            if selected:
+                self.state.selected_agent_id = selected
+                self._refresh_ui()
+            event.stop()
+
+    def _update_payload(self, payload: TickPayload) -> None:
+        self.payload = payload
+        agent_ids = _agent_ids(payload)
+        if self.state.selected_agent_id not in agent_ids:
+            self.state.selected_agent_id = agent_ids[0] if agent_ids else None
+        _sync_state_for_payload(payload, self.state)
+        self._refresh_ui()
+
+    def _refresh_ui(self) -> None:
+        if self.payload is None:
+            if self._events_panel:
+                self._events_panel.update(
+                    Panel(Text("Waiting for data."), title="Events")
+                )
+            if self._agent_details:
+                self._agent_details.update(
+                    Panel(Text("No agent selected."), title="Selected")
+                )
+            if self._status_bar:
+                self._status_bar.update(
+                    Panel(Text(self._status_text()), padding=(0, 1))
+                )
+            if self._map_widget:
+                self._map_widget.refresh()
+            return
+        if self._events_panel:
+            self._events_panel.update(
+                Panel(
+                    _render_event_feed(
+                        self.state, selected_agent=self.state.selected_agent_id
+                    ),
+                    title="Events",
+                )
+            )
+        if self._agent_details:
+            self._agent_details.update(
+                Panel(
+                    _render_selected_agent(self.payload, self.state.selected_agent_id),
+                    title="Selected",
+                )
+            )
+        self._update_agent_list(self.payload)
+        if self._status_bar:
+            self._status_bar.update(Panel(Text(self._status_text()), padding=(0, 1)))
+        if self._map_widget:
+            self._map_widget.refresh()
+
+    def _update_agent_list(self, payload: TickPayload) -> None:
+        if not self._agent_list:
+            return
+        agent_ids = _agent_ids(payload)
+        self._agent_list.clear()
+        for index, agent_id in enumerate(agent_ids):
+            node = payload.state.world.nodes.get(agent_id)
+            name = node.name if node else agent_id
+            label = f"{index + 1}. {name}" if index < 9 else name
+            self._agent_list.append(AgentListItem(agent_id, label))
+        if agent_ids and self.state.selected_agent_id in agent_ids:
+            self._agent_list.index = agent_ids.index(self.state.selected_agent_id)
+
+    def _render_map(self, size, content_size) -> MapRenderResult:
+        inner_width = max(1, content_size.width - 2)
+        inner_height = max(1, content_size.height - 2)
+        payload = self.payload
+        selected_pos = None
+        agents = {}
+        if payload:
+            selected_pos = _selected_agent_position(
+                payload, self.state.selected_agent_id
+            )
+            agents = payload.state.agent_positions
+
+        if (
+            inner_width >= self.resources.world_map.width
+            and inner_height >= self.resources.world_map.height
+        ):
+            viewport = compute_viewport(
+                self.resources.world_map.width,
+                self.resources.world_map.height,
+                self.resources.world_map.width,
+                self.resources.world_map.height,
+                origin=(0, 0),
+            )
+        else:
+            if self.state.camera_mode == "follow" and selected_pos is not None:
+                viewport = compute_viewport(
+                    self.resources.world_map.width,
+                    self.resources.world_map.height,
+                    inner_width,
+                    inner_height,
+                    center=selected_pos,
+                )
+                self.state.camera_origin = (viewport.x, viewport.y)
+            else:
+                viewport = compute_viewport(
+                    self.resources.world_map.width,
+                    self.resources.world_map.height,
+                    inner_width,
+                    inner_height,
+                    origin=self.state.camera_origin,
+                )
+                self.state.camera_origin = (viewport.x, viewport.y)
+
+        lines = render_map_lines(
+            self.resources.world_map,
+            objects=self.resources.objects,
+            agents=agents,
+            selected_agent_id=self.state.selected_agent_id,
+            viewport=viewport,
+            room_areas=self.resources.room_bounds,
+        )
+        map_render = Align.center(Group(*lines), vertical="middle")
+        renderable = Panel(map_render, title="World", padding=(0, 0))
+        offset_x = 1 + max(0, (inner_width - viewport.width) // 2)
+        offset_y = 1 + max(0, (inner_height - viewport.height) // 2)
+        return MapRenderResult(
+            renderable=renderable,
+            viewport=viewport,
+            map_width=viewport.width,
+            map_height=viewport.height,
+            offset_x=offset_x,
+            offset_y=offset_y,
+        )
+
+    def _status_text(self) -> str:
+        return ""
+
+
+class MainViewerScreen(BaseViewerScreen):
+    BINDINGS = [
+        ("space", "toggle_pause", "Pause"),
+        ("q", "quit", "Quit"),
+        ("f", "follow", "Follow"),
+        ("up", "pan_up", "Pan up"),
+        ("down", "pan_down", "Pan down"),
+        ("left", "pan_left", "Pan left"),
+        ("right", "pan_right", "Pan right"),
+    ]
+
+    def __init__(
+        self,
+        payloads: Iterable[TickPayload],
+        *,
+        config: WorldConfig | None = None,
+        base_dir: Path | None = None,
+        tick_delay: float = 0.2,
+    ) -> None:
+        resources = _load_viewer_resources(config=config, base_dir=base_dir)
+        super().__init__(resources=resources)
+        self._payloads = iter(payloads)
+        self._tick_delay = tick_delay
+        self._paused = False
+        self._stop_event = threading.Event()
+        self._worker: threading.Thread | None = None
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        self._start_worker()
+
+    def on_unmount(self) -> None:
+        self._stop_event.set()
+
+    def _start_worker(self) -> None:
+        self._worker = threading.Thread(target=self._payload_loop, daemon=True)
+        self._worker.start()
+
+    def _payload_loop(self) -> None:
+        for payload in self._payloads:
+            if self._stop_event.is_set():
+                break
+            while self._paused and not self._stop_event.is_set():
+                time.sleep(0.05)
+            if self._stop_event.is_set():
+                break
+            self.app.call_from_thread(self._accept_payload, payload)
+            time.sleep(self._tick_delay)
+
+    def _accept_payload(self, payload: TickPayload) -> None:
+        self.resources = _maybe_reload_resources(self.resources, self.state)
+        self._update_payload(payload)
+
+    def action_toggle_pause(self) -> None:
+        self._paused = not self._paused
+        self._refresh_ui()
+
+    def action_quit(self) -> None:
+        self.app.exit()
+
+    def action_follow(self) -> None:
+        self.state.camera_mode = "follow"
+        self._refresh_ui()
+
+    def _pan(self, direction: str) -> None:
+        self.state.camera_mode = "pan"
+        self.state.camera_origin = _pan_origin(
+            self.state.camera_origin,
+            direction,
+            self.resources.world_map.width,
+            self.resources.world_map.height,
+        )
+        self._refresh_ui()
+
+    def action_pan_up(self) -> None:
+        self._pan("UP")
+
+    def action_pan_down(self) -> None:
+        self._pan("DOWN")
+
+    def action_pan_left(self) -> None:
+        self._pan("LEFT")
+
+    def action_pan_right(self) -> None:
+        self._pan("RIGHT")
+
+    def _status_text(self) -> str:
+        label = "paused" if self._paused else "live"
+        return (
+            "Main controls: space=pause | q=quit | f=follow | arrows=pan | "
+            "[/]=cycle | 1-9=select | "
+            + _reload_label(self.state.last_reload_at)
+            + " | status="
+            + label
+        )
+
+
 def run_main_viewer(
     payloads: Iterable[TickPayload],
     *,
@@ -59,45 +388,16 @@ def run_main_viewer(
     base_dir: Path | None = None,
     tick_delay: float = 0.2,
 ) -> None:
-    resources = _load_viewer_resources(config=config, base_dir=base_dir)
-    console = Console()
-    state = MainViewerState()
-
-    with raw_terminal():
-        with Live(console=console, auto_refresh=False, screen=True) as live:
-            paused = False
-            last_payload: TickPayload | None = None
-            for payload in payloads:
-                resources = _maybe_reload_resources(resources, state)
-                _sync_state_for_payload(payload, state)
-                paused = _handle_live_input(state, payload, paused, resources)
-                if paused:
-                    last_payload = payload
-                    _render_and_update(live, payload, resources, state)
-                    resources = _pause_loop(live, payload, resources, state)
-                    paused = False
-                    continue
-                renderable = _render_with_state(
-                    payload, resources, state, frame_size=console.size
-                )
-                last_payload = payload
-                live.update(_wrap_with_status(renderable, paused=False, state=state), refresh=True)
-                if state.should_exit:
-                    break
-                time.sleep(tick_delay)
-            while last_payload is not None and not state.should_exit:
-                resources = _maybe_reload_resources(resources, state)
-                _sync_state_for_payload(last_payload, state)
-                paused = _handle_live_input(state, last_payload, paused, resources)
-                if paused:
-                    resources = _pause_loop(live, last_payload, resources, state)
-                    paused = False
-                    continue
-                renderable = _render_with_state(
-                    last_payload, resources, state, frame_size=console.size
-                )
-                live.update(_wrap_with_status(renderable, paused=False, state=state), refresh=True)
-                time.sleep(tick_delay)
+    app = LatticevilleApp(
+        MainViewerScreen(
+            payloads,
+            config=config,
+            base_dir=base_dir,
+            tick_delay=tick_delay,
+        ),
+        title="Latticeville",
+    )
+    app.run()
 
 
 def render_main_view(
@@ -151,7 +451,10 @@ def _render_world_map(
     map_width, map_height = _map_panel_size(frame_size)
     selected_pos = _selected_agent_position(payload, state.selected_agent_id)
 
-    if map_width >= resources.world_map.width and map_height >= resources.world_map.height:
+    if (
+        map_width >= resources.world_map.width
+        and map_height >= resources.world_map.height
+    ):
         viewport = compute_viewport(
             resources.world_map.width,
             resources.world_map.height,
@@ -376,8 +679,7 @@ def _format_event(payload: TickPayload, event) -> str | None:
         time_window = data.get("time_window", "")
         level = data.get("level", "action")
         return (
-            f"Plan [{level}] ({time_window} @ {location}): "
-            f"{_truncate(description, 70)}"
+            f"Plan [{level}] ({time_window} @ {location}): {_truncate(description, 70)}"
         )
     if kind == "REFLECTION_SUMMARY":
         count = data.get("count", 0)
@@ -407,49 +709,6 @@ def _truncate(text: str, limit: int = 24) -> str:
     return text[: limit - 3] + "..."
 
 
-def _handle_live_input(
-    state: MainViewerState,
-    payload: TickPayload,
-    paused: bool,
-    resources: ViewerResources,
-) -> bool:
-    event = read_key()
-    if not event:
-        return paused
-    agent_ids = _agent_ids(payload)
-    if event.kind == "key":
-        key = event.key or ""
-        if key == " ":
-            return not paused
-        if key in {"q", "Q"}:
-            state.should_exit = True
-            return paused
-        if key in {"f", "F"}:
-            state.camera_mode = "follow"
-        if agent_ids:
-            if key == "]":
-                state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, 1)
-            if key == "[":
-                state.selected_agent_id = _cycle(agent_ids, state.selected_agent_id, -1)
-            if key.isdigit() and key != "0":
-                selected = map_character_index(agent_ids, int(key) - 1)
-                if selected:
-                    state.selected_agent_id = selected
-        if key in {"UP", "DOWN", "LEFT", "RIGHT"}:
-            state.camera_mode = "pan"
-            state.camera_origin = _pan_origin(
-                state.camera_origin,
-                key,
-                resources.world_map.width,
-                resources.world_map.height,
-            )
-    if event.kind == "mouse":
-        agent = map_character_click(state.character_hitboxes, x=event.x, y=event.y)
-        if agent:
-            state.selected_agent_id = agent
-    return paused
-
-
 def _pan_origin(
     origin: tuple[int, int],
     key: str,
@@ -465,56 +724,10 @@ def _pan_origin(
         dx = -1
     elif key == "RIGHT":
         dx = 1
-    return (_clamp(origin[0] + dx, 0, max(0, width - 1)), _clamp(origin[1] + dy, 0, max(0, height - 1)))
-
-
-def _pause_loop(
-    live: Live,
-    payload: TickPayload,
-    resources: ViewerResources,
-    state: MainViewerState,
-) -> ViewerResources:
-    while not state.should_exit:
-        resources = _maybe_reload_resources(resources, state)
-        paused = _handle_live_input(state, payload, paused=True, resources=resources)
-        renderable = _render_with_state(payload, resources, state, frame_size=live.console.size)
-        live.update(_wrap_with_status(renderable, paused=True, state=state), refresh=True)
-        if not paused:
-            break
-        time.sleep(0.05)
-    return resources
-
-
-def _render_and_update(
-    live: Live,
-    payload: TickPayload,
-    resources: ViewerResources,
-    state: MainViewerState,
-) -> None:
-    renderable = _render_with_state(payload, resources, state, frame_size=live.console.size)
-    live.update(_wrap_with_status(renderable, paused=True, state=state), refresh=True)
-
-
-def _wrap_with_status(content: object, *, paused: bool, state: MainViewerState) -> Layout:
-    layout = Layout()
-    layout.split_column(
-        Layout(content, ratio=1),
-        Layout(_render_status_bar(paused=paused, state=state), size=3),
+    return (
+        _clamp(origin[0] + dx, 0, max(0, width - 1)),
+        _clamp(origin[1] + dy, 0, max(0, height - 1)),
     )
-    return layout
-
-
-def _render_status_bar(*, paused: bool, state: MainViewerState) -> Panel:
-    label = "paused" if paused else "live"
-    text = Text(
-        "Main controls: space=pause | q=quit | f=follow | arrows=pan | "
-        "[/]=cycle | 1-9=select | "
-        + _reload_label(state.last_reload_at)
-        + " | status="
-        + label,
-        style="bold",
-    )
-    return Panel(text, padding=(0, 1))
 
 
 def _maybe_reload_resources(
@@ -558,6 +771,12 @@ def _cycle(agent_ids: list[str], current: str | None, delta: int) -> str:
     return agent_ids[(index + delta) % len(agent_ids)]
 
 
+def map_character_index(agents: list[str], index: int) -> str | None:
+    if index < 0 or index >= len(agents):
+        return None
+    return agents[index]
+
+
 def map_character_click(
     hitboxes: list[tuple[int, int, str]],
     *,
@@ -570,12 +789,6 @@ def map_character_click(
         if y == row and x >= col:
             return agent_id
     return None
-
-
-def map_character_index(agents: list[str], index: int) -> str | None:
-    if index < 0 or index >= len(agents):
-        return None
-    return agents[index]
 
 
 def _clamp(value: int, low: int, high: int) -> int:

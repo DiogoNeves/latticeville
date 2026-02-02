@@ -1,4 +1,4 @@
-"""Replay player loop for main viewer."""
+"""Replay player loop for main viewer (Textual)."""
 
 from __future__ import annotations
 
@@ -6,21 +6,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from rich.console import Console
-from rich.live import Live
-from rich.layout import Layout
-from rich.panel import Panel
-from rich.text import Text
-
 from latticeville.db.replay_log import RUN_LOG_NAME
-from latticeville.render.main_viewer import (
-    MainViewerState,
-    map_character_click,
-    map_character_index,
-    render_main_view,
-)
+from latticeville.render.main_viewer import BaseViewerScreen, _load_viewer_resources
 from latticeville.render.replay_reader import read_tick_payloads
-from latticeville.render.terminal_input import raw_terminal, read_key
+from latticeville.render.textual_app import LatticevilleApp
 from latticeville.sim.contracts import TickPayload
 
 
@@ -36,111 +25,78 @@ class ReplayController:
         self.last_tick = time.monotonic()
 
 
+class ReplayPlayerScreen(BaseViewerScreen):
+    BINDINGS = [
+        ("space", "toggle_play", "Play/pause"),
+        ("n", "step", "Step"),
+        ("r", "restart", "Restart"),
+        ("q", "quit", "Quit"),
+    ]
+
+    def __init__(self, run_folder: Path, *, tick_delay: float = 0.5) -> None:
+        self._payloads = load_replay_payloads(run_folder / RUN_LOG_NAME)
+        resources = _load_viewer_resources(config=None, base_dir=None)
+        super().__init__(resources=resources)
+        self._controller = ReplayController(last_tick=time.monotonic())
+        self._tick_delay = tick_delay
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        if self._payloads:
+            self._set_index(0)
+        self.set_interval(0.05, self._tick)
+
+    def _set_index(self, index: int) -> None:
+        index = max(0, min(index, len(self._payloads) - 1))
+        self._controller.index = index
+        self._controller.last_tick = time.monotonic()
+        self._update_payload(self._payloads[index])
+
+    def _tick(self) -> None:
+        if not self._payloads or not self._controller.playing:
+            return
+        if time.monotonic() - self._controller.last_tick < self._tick_delay:
+            return
+        if self._controller.index >= len(self._payloads) - 1:
+            self._controller.playing = False
+            return
+        self._set_index(self._controller.index + 1)
+
+    def action_toggle_play(self) -> None:
+        self._controller.playing = not self._controller.playing
+        self._controller.last_tick = time.monotonic()
+        self._refresh_ui()
+
+    def action_step(self) -> None:
+        if not self._payloads:
+            return
+        self._controller.playing = False
+        self._set_index(self._controller.index + 1)
+
+    def action_restart(self) -> None:
+        if not self._payloads:
+            return
+        self._controller.reset()
+        self._set_index(0)
+
+    def action_quit(self) -> None:
+        self.app.exit()
+
+    def _status_text(self) -> str:
+        return "Replay controls: space=play/pause | n=step | r=restart | q=quit | [/]=cycle | 1-9=select"
+
+
 def run_replay_player(
     run_folder: Path,
     *,
     tick_delay: float = 0.5,
 ) -> None:
-    log_path = run_folder / RUN_LOG_NAME
-    payloads = load_replay_payloads(log_path)
-    if not payloads:
-        return
-    state = MainViewerState()
-    console = Console()
-    controller = ReplayController(last_tick=time.monotonic())
-
-    with raw_terminal():
-        with Live(console=console, auto_refresh=False, screen=True) as live:
-            while True:
-                payload = payloads[controller.index]
-                renderable = render_main_view(payload, state=state)
-                live.update(_wrap_with_status(renderable), refresh=True)
-                event = read_key()
-                if event and event.kind == "key" and event.key == "q":
-                    break
-                if event and event.kind == "key" and event.key == " ":
-                    controller.playing = not controller.playing
-                if event and event.kind == "key" and event.key == "n":
-                    controller.playing = False
-                    controller.index = min(controller.index + 1, len(payloads) - 1)
-                if event and event.kind == "key" and event.key == "r":
-                    controller.reset()
-                    state = MainViewerState()
-                if event and event.kind == "key" and event.key in {"[", "]"}:
-                    state.selected_agent_id = _cycle_agent(
-                        payloads[controller.index],
-                        state.selected_agent_id,
-                        1 if event.key == "]" else -1,
-                    )
-                if (
-                    event
-                    and event.kind == "key"
-                    and event.key
-                    and event.key.isdigit()
-                    and event.key != "0"
-                ):
-                    agent_ids = _agent_ids(payloads[controller.index])
-                    selected = map_character_index(agent_ids, int(event.key) - 1)
-                    if selected:
-                        state.selected_agent_id = selected
-                if event and event.kind == "mouse":
-                    agent = map_character_click(
-                        state.character_hitboxes, x=event.x, y=event.y
-                    )
-                    if agent:
-                        state.selected_agent_id = agent
-
-                _advance(controller, payloads, tick_delay)
-                time.sleep(0.05)
+    app = LatticevilleApp(
+        ReplayPlayerScreen(run_folder, tick_delay=tick_delay),
+        title="Latticeville Replay",
+    )
+    app.run()
 
 
 def load_replay_payloads(log_path: Path) -> list[TickPayload]:
     return list(read_tick_payloads(log_path))
-
-
-def _advance(
-    controller: ReplayController, payloads: list[TickPayload], tick_delay: float
-) -> None:
-    if not controller.playing:
-        return
-    if time.monotonic() - controller.last_tick < tick_delay:
-        return
-    controller.index = min(controller.index + 1, len(payloads) - 1)
-    controller.last_tick = time.monotonic()
-    if controller.index == len(payloads) - 1:
-        controller.playing = False
-
-
-def _cycle_agent(payload: TickPayload, current: str | None, delta: int) -> str | None:
-    agent_ids = sorted(
-        node.id for node in payload.state.world.nodes.values() if node.type == "agent"
-    )
-    if not agent_ids:
-        return None
-    if current not in agent_ids:
-        return agent_ids[0]
-    index = agent_ids.index(current)
-    return agent_ids[(index + delta) % len(agent_ids)]
-
-
-def _agent_ids(payload: TickPayload) -> list[str]:
-    return sorted(
-        node.id for node in payload.state.world.nodes.values() if node.type == "agent"
-    )
-
-
-def _wrap_with_status(content: object) -> Layout:
-    layout = Layout()
-    layout.split_column(
-        Layout(content, ratio=1),
-        Layout(_render_status_bar(), size=3),
-    )
-    return layout
-
-
-def _render_status_bar() -> Panel:
-    text = Text(
-        "Replay controls: space=play/pause | n=step | r=restart | q=quit | [/]=cycle",
-        style="bold",
-    )
-    return Panel(text, padding=(0, 1))

@@ -8,15 +8,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from rich.align import Align
-from rich.console import Console, Group, RenderableType
-from rich.layout import Layout
+from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.table import Table
 from rich.tree import Tree
 from rich.text import Text
-from rich.live import Live
+from textual.app import ComposeResult
+from textual.events import Key
+from textual.screen import Screen
+from textual.widgets import Static
+from textual.containers import Horizontal, Vertical
 
-from latticeville.render.terminal_input import raw_terminal, read_key
+from latticeville.render.textual_app import LatticevilleApp
+from latticeville.render.textual_widgets import MapClicked, MapRenderResult, MapWidget
 from latticeville.render.world_map import (
     AGENT_STYLE,
     OBJECT_STYLE,
@@ -82,74 +86,279 @@ class EditorResources:
     map_mtime: float | None
 
 
+class WorldEditorScreen(Screen):
+    CSS = """
+    Screen {
+        layout: vertical;
+    }
+    #main {
+        layout: horizontal;
+        height: 1fr;
+    }
+    #center-pane {
+        layout: vertical;
+        width: 1fr;
+    }
+    #selection-bar {
+        height: 3;
+    }
+    #status-bar {
+        height: 3;
+    }
+    """
+
+    BINDINGS = [
+        ("up", "cursor_up", "Move up"),
+        ("down", "cursor_down", "Move down"),
+        ("left", "cursor_left", "Move left"),
+        ("right", "cursor_right", "Move right"),
+        ("t", "set_top_left", "Set top-left"),
+        ("b", "set_bottom_right", "Set bottom-right"),
+        ("s", "save", "Save"),
+        ("space", "toggle_paint", "Paint"),
+        ("c", "clear_paint", "Clear paint"),
+        ("delete", "erase", "Erase"),
+        ("o", "create_object", "Object"),
+        ("q", "quit", "Quit"),
+        ("ctrl+c", "force_quit", "Force quit"),
+    ]
+
+    def __init__(self, *, base_dir: Path | None = None) -> None:
+        super().__init__()
+        self._base_dir = base_dir
+        self.resources = _load_editor_resources(base_dir=base_dir)
+        self.state = EditorState(
+            cursor=(1, 1),
+            rooms=[
+                RoomDef(room.id, room.name, room.bounds)
+                for room in self.resources.config.rooms
+            ],
+        )
+        self._world_tree: Static | None = None
+        self._selection_bar: Static | None = None
+        self._editor_panel: Static | None = None
+        self._status_bar: Static | None = None
+        self._map_widget: MapWidget | None = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="root"):
+            with Horizontal(id="main"):
+                yield Static(id="world-tree")
+                with Vertical(id="center-pane"):
+                    yield Static(id="selection-bar")
+                    yield MapWidget(
+                        self._render_map,
+                        emit_clicks=True,
+                        id="world-map",
+                    )
+                yield Static(id="editor-panel")
+            yield Static(id="status-bar")
+
+    def on_mount(self) -> None:
+        self._world_tree = self.query_one("#world-tree", Static)
+        self._selection_bar = self.query_one("#selection-bar", Static)
+        self._editor_panel = self.query_one("#editor-panel", Static)
+        self._status_bar = self.query_one("#status-bar", Static)
+        self._map_widget = self.query_one(MapWidget)
+        self._world_tree.styles.width = LEFT_WIDTH
+        self._editor_panel.styles.width = RIGHT_WIDTH
+        self._refresh_ui()
+        self.set_interval(0.15, self._tick)
+
+    def _tick(self) -> None:
+        refreshed = _maybe_reload_resources(self.state, self.resources)
+        if refreshed is not self.resources:
+            self.resources = refreshed
+            self._refresh_ui()
+
+    def _refresh_ui(self) -> None:
+        if self._world_tree:
+            self._world_tree.update(
+                Panel(
+                    _render_world_tree(self.state, self.resources), title="World Tree"
+                )
+            )
+        if self._selection_bar:
+            self._selection_bar.update(
+                Panel(_selection_summary(self.state, self.resources), title="Selection")
+            )
+        if self._editor_panel:
+            self._editor_panel.update(
+                Panel(_render_editor_panel(self.state), title="Editor")
+            )
+        if self._status_bar:
+            self._status_bar.update(_render_status_bar(self.state))
+        if self._map_widget:
+            self._map_widget.refresh()
+
+    def _render_map(self, size, content_size) -> MapRenderResult:
+        inner_width = max(1, content_size.width - 2)
+        inner_height = max(1, content_size.height - 2)
+        viewport = compute_viewport(
+            self.resources.world_map.width,
+            self.resources.world_map.height,
+            inner_width,
+            inner_height,
+            center=self.state.cursor,
+        )
+        selection = _selection_bounds(self.state)
+        room_bounds = [room.bounds for room in self.state.rooms]
+        characters = _character_positions(self.resources, self.state.rooms)
+        lines = render_map_lines(
+            self.resources.world_map,
+            objects=self.resources.objects,
+            agents=characters,
+            selected_agent_id=None,
+            viewport=viewport,
+            rooms=room_bounds,
+            room_areas=room_bounds,
+            selection=selection,
+            cursor=self.state.cursor,
+        )
+        map_render = Align.center(Group(*lines), vertical="middle")
+        renderable = Panel(map_render, title="World", padding=(0, 0))
+        offset_x = 1 + max(0, (inner_width - viewport.width) // 2)
+        offset_y = 1 + max(0, (inner_height - viewport.height) // 2)
+        return MapRenderResult(
+            renderable=renderable,
+            viewport=viewport,
+            map_width=viewport.width,
+            map_height=viewport.height,
+            offset_x=offset_x,
+            offset_y=offset_y,
+        )
+
+    def on_map_clicked(self, message: MapClicked) -> None:
+        self.state.cursor = message.world_point
+        self._refresh_ui()
+
+    def on_key(self, event: Key) -> None:
+        if self.state.input_mode:
+            if event.key == "ctrl+c":
+                _handle_text_input(self.state, self.resources, "ESC")
+            else:
+                _handle_text_input(self.state, self.resources, _key_from_event(event))
+            self._refresh_ui()
+            event.stop()
+            return
+        if event.character and _is_paint_brush(event.character):
+            self.state.brush = event.character
+            self.state.paint_enabled = True
+            self.state.last_message = f"Brush: {event.character}"
+            self._refresh_ui()
+            event.stop()
+            return
+        if event.key == "backspace":
+            self.action_erase()
+            event.stop()
+
+    def action_cursor_up(self) -> None:
+        self._move_cursor("UP")
+
+    def action_cursor_down(self) -> None:
+        self._move_cursor("DOWN")
+
+    def action_cursor_left(self) -> None:
+        self._move_cursor("LEFT")
+
+    def action_cursor_right(self) -> None:
+        self._move_cursor("RIGHT")
+
+    def _move_cursor(self, direction: str) -> None:
+        if self.state.input_mode:
+            return
+        self.state.cursor = _move_cursor(
+            self.state.cursor, direction, self.resources.world_map
+        )
+        if self.state.paint_enabled and self.state.brush:
+            _apply_brush(self.resources, self.state.cursor, self.state.brush)
+        self._refresh_ui()
+
+    def action_set_top_left(self) -> None:
+        if self.state.input_mode:
+            return
+        self.state.selection_start = self.state.cursor
+        self.state.last_message = "Top-left set."
+        self._refresh_ui()
+
+    def action_set_bottom_right(self) -> None:
+        if self.state.input_mode:
+            return
+        self.state.selection_end = self.state.cursor
+        _maybe_commit_selection(self.state, self.resources)
+        self._refresh_ui()
+
+    def action_save(self) -> None:
+        if self.state.input_mode:
+            return
+        _save_rooms(self.state, self.resources)
+        self._refresh_ui()
+
+    def action_toggle_paint(self) -> None:
+        if self.state.input_mode:
+            return
+        obj = _object_for_point(self.resources.objects, self.state.cursor)
+        if obj:
+            self.state.input_mode = "object_color_edit"
+            self.state.input_buffer = ""
+            self.state.pending_object_id = obj.object_id
+            self.state.last_message = f"Edit color for {obj.name}."
+            self._refresh_ui()
+            return
+        if self.state.brush:
+            self.state.paint_enabled = not self.state.paint_enabled
+            self.state.last_message = (
+                "Paint on." if self.state.paint_enabled else "Paint off."
+            )
+        self._refresh_ui()
+
+    def action_clear_paint(self) -> None:
+        if self.state.input_mode:
+            return
+        self.state.paint_enabled = False
+        self.state.brush = None
+        self.state.input_mode = None
+        self.state.input_buffer = ""
+        self.state.pending_object_name = None
+        self.state.pending_object_symbol = None
+        self.state.pending_object_id = None
+        self.state.last_message = "Paint cleared."
+        self._refresh_ui()
+
+    def action_erase(self) -> None:
+        if self.state.input_mode:
+            return
+        _erase_tile(self.state, self.resources)
+        self._refresh_ui()
+
+    def action_create_object(self) -> None:
+        if self.state.input_mode:
+            return
+        self.state.input_mode = "object_name"
+        self.state.input_buffer = ""
+        self.state.pending_object_name = None
+        self.state.pending_object_symbol = None
+        self.state.pending_object_id = None
+        self.state.last_message = "Enter object name."
+        self._refresh_ui()
+
+    def action_quit(self) -> None:
+        if self.state.unsaved_rooms:
+            self.state.last_message = "Unsaved rooms. Press Ctrl+C to quit."
+            self._refresh_ui()
+            return
+        self.app.exit()
+
+    def action_force_quit(self) -> None:
+        if self.state.unsaved_rooms:
+            self.app.exit()
+
+
 def run_world_editor(*, base_dir: Path | None = None) -> None:
-    resources = _load_editor_resources(base_dir=base_dir)
-    state = EditorState(
-        cursor=(1, 1),
-        rooms=[RoomDef(room.id, room.name, room.bounds) for room in resources.config.rooms],
+    app = LatticevilleApp(
+        WorldEditorScreen(base_dir=base_dir), title="Latticeville Editor"
     )
-    console = Console()
-
-    with raw_terminal():
-        with Live(console=console, auto_refresh=False, screen=True) as live:
-            try:
-                while not state.should_exit:
-                    resources = _maybe_reload_resources(state, resources)
-                    frame_size = console.size
-                    _handle_input(state, resources, frame_size=frame_size)
-                    renderable = _render_editor(state, resources, frame_size=frame_size)
-                    live.update(renderable, refresh=True)
-                    time.sleep(0.03)
-            except KeyboardInterrupt:
-                state.should_exit = True
-
-
-def _render_editor(
-    state: EditorState, resources: EditorResources, *, frame_size
-) -> RenderableType:
-    map_width, map_height = _map_panel_size(frame_size)
-    viewport = compute_viewport(
-        resources.world_map.width,
-        resources.world_map.height,
-        map_width,
-        map_height,
-        center=state.cursor,
-    )
-
-    selection = _selection_bounds(state)
-    room_bounds = [room.bounds for room in state.rooms]
-
-    characters = _character_positions(resources, state.rooms)
-    lines = render_map_lines(
-        resources.world_map,
-        objects=resources.objects,
-        agents=characters,
-        selected_agent_id=None,
-        viewport=viewport,
-        rooms=room_bounds,
-        room_areas=room_bounds,
-        selection=selection,
-        cursor=state.cursor,
-    )
-    map_panel = Align.center(Group(*lines), vertical="middle")
-
-    left = _render_world_tree(state, resources)
-    right = _render_editor_panel(state)
-    center = _render_center_panel(state, resources, map_panel)
-
-    layout = Layout()
-    layout.split_row(
-        Layout(Panel(left, title="World Tree"), size=LEFT_WIDTH),
-        Layout(center, ratio=1),
-        Layout(Panel(right, title="Editor"), size=RIGHT_WIDTH),
-    )
-
-    wrapper = Layout()
-    wrapper.split_column(
-        Layout(layout, ratio=1),
-        Layout(_render_status_bar(state), size=3),
-    )
-    return wrapper
+    app.run()
 
 
 def _render_world_tree(
@@ -205,11 +414,15 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
     table.add_row("Paint", "on" if state.paint_enabled else "off")
     table.add_row("Brush", state.brush or "-")
     if state.selection_start:
-        table.add_row("Top-left", f"{state.selection_start[0]}, {state.selection_start[1]}")
+        table.add_row(
+            "Top-left", f"{state.selection_start[0]}, {state.selection_start[1]}"
+        )
     else:
         table.add_row("Top-left", "-")
     if state.selection_end:
-        table.add_row("Bottom-right", f"{state.selection_end[0]}, {state.selection_end[1]}")
+        table.add_row(
+            "Bottom-right", f"{state.selection_end[0]}, {state.selection_end[1]}"
+        )
     else:
         table.add_row("Bottom-right", "-")
     if state.input_mode:
@@ -238,163 +451,6 @@ def _render_status_bar(state: EditorState) -> Panel:
         style="bold",
     )
     return Panel(text, padding=(0, 1))
-
-
-def _handle_input(
-    state: EditorState, resources: EditorResources, *, frame_size
-) -> None:
-    event = read_key()
-    if not event:
-        return
-    if event.kind == "mouse":
-        target = _map_click_to_world(
-            event.x,
-            event.y,
-            state,
-            resources,
-            frame_size,
-        )
-        if target is not None:
-            state.cursor = target
-        return
-    if event.kind != "key":
-        return
-    key = event.key or ""
-
-    if state.input_mode:
-        _handle_text_input(state, resources, key)
-        return
-
-    if key in {"q", "Q"}:
-        if state.unsaved_rooms:
-            state.last_message = "Unsaved rooms. Press Ctrl+C to quit."
-        else:
-            state.should_exit = True
-        return
-    if key == "CTRL_C":
-        if state.unsaved_rooms:
-            state.should_exit = True
-        return
-    if key in {"c", "C"}:
-        state.paint_enabled = False
-        state.brush = None
-        state.input_mode = None
-        state.input_buffer = ""
-        state.pending_object_name = None
-        state.pending_object_symbol = None
-        state.pending_object_id = None
-        state.last_message = "Paint cleared."
-        return
-    if key in {"s", "S"}:
-        _save_rooms(state, resources)
-        return
-    if key in {"t", "T"}:
-        state.selection_start = state.cursor
-        state.last_message = "Top-left set."
-        return
-    if key in {"b", "B"}:
-        state.selection_end = state.cursor
-        _maybe_commit_selection(state, resources)
-        return
-    if key == " ":
-        obj = _object_for_point(resources.objects, state.cursor)
-        if obj:
-            state.input_mode = "object_color_edit"
-            state.input_buffer = ""
-            state.pending_object_id = obj.object_id
-            state.last_message = f"Edit color for {obj.name}."
-            return
-        if state.brush:
-            state.paint_enabled = not state.paint_enabled
-            state.last_message = "Paint on." if state.paint_enabled else "Paint off."
-        return
-    if key in {"DELETE", "BACKSPACE"}:
-        _erase_tile(state, resources)
-        return
-    if key in {"o", "O"}:
-        state.input_mode = "object_name"
-        state.input_buffer = ""
-        state.pending_object_name = None
-        state.pending_object_symbol = None
-        state.pending_object_id = None
-        state.last_message = "Enter object name."
-        return
-
-    if _is_paint_brush(key):
-        state.brush = key
-        state.paint_enabled = True
-        state.last_message = f"Brush: {key}"
-        return
-
-    if key in {"UP", "DOWN", "LEFT", "RIGHT"}:
-        state.cursor = _move_cursor(state.cursor, key, resources.world_map)
-        if state.paint_enabled and state.brush:
-            _apply_brush(resources, state.cursor, state.brush)
-        return
-
-
-def _render_center_panel(
-    state: EditorState, resources: EditorResources, map_panel: RenderableType
-) -> Layout:
-    selection = _selection_summary(state, resources)
-    bar = Panel(selection, title="Selection", padding=(0, 1))
-    layout = Layout()
-    layout.split_column(
-        Layout(bar, size=3),
-        Layout(Panel(map_panel, title="World"), ratio=1),
-    )
-    return layout
-
-
-def _map_click_to_world(
-    x: int | None,
-    y: int | None,
-    state: EditorState,
-    resources: EditorResources,
-    frame_size,
-) -> tuple[int, int] | None:
-    if x is None or y is None or frame_size is None:
-        return None
-
-    map_width, map_height = _map_panel_size(frame_size)
-    viewport = compute_viewport(
-        resources.world_map.width,
-        resources.world_map.height,
-        map_width,
-        map_height,
-        center=state.cursor,
-    )
-
-    total_width = frame_size.width
-    total_height = frame_size.height
-    main_height = total_height - 3
-    center_width = total_width - LEFT_WIDTH - RIGHT_WIDTH
-
-    map_panel_top = 1 + 3
-    map_panel_left = LEFT_WIDTH + 1
-    map_panel_height = main_height - 3
-
-    content_left = map_panel_left + 1
-    content_top = map_panel_top + 1
-    content_width = max(1, center_width - 2)
-    content_height = max(1, map_panel_height - 2)
-
-    map_lines_width = viewport.width
-    map_lines_height = viewport.height
-    offset_x = max(0, (content_width - map_lines_width) // 2)
-    offset_y = max(0, (content_height - map_lines_height) // 2)
-
-    map_left = content_left + offset_x
-    map_top = content_top + offset_y
-    map_right = map_left + map_lines_width - 1
-    map_bottom = map_top + map_lines_height - 1
-
-    if not (map_left <= x <= map_right and map_top <= y <= map_bottom):
-        return None
-
-    world_x = viewport.x + (x - map_left)
-    world_y = viewport.y + (y - map_top)
-    return (world_x, world_y)
 
 
 def _move_cursor(
@@ -428,9 +484,7 @@ def _maybe_commit_selection(state: EditorState, resources: EditorResources) -> N
     state.last_message = f"Added {name} and fenced map."
 
 
-def _normalize_bounds(
-    start: tuple[int, int], end: tuple[int, int]
-) -> Bounds:
+def _normalize_bounds(start: tuple[int, int], end: tuple[int, int]) -> Bounds:
     x0, y0 = start
     x1, y1 = end
     left = min(x0, x1)
@@ -532,7 +586,9 @@ def _maybe_reload_resources(
     ):
         return resources
     try:
-        new_resources = _load_editor_resources(base_dir=resources.world_json_path.parent)
+        new_resources = _load_editor_resources(
+            base_dir=resources.world_json_path.parent
+        )
     except FileNotFoundError as exc:
         state.last_message = f"Reload failed: {exc}"
         return resources
@@ -543,7 +599,9 @@ def _maybe_reload_resources(
     state.unsaved_rooms = False
     state.cursor = _clamp_point(state.cursor, new_resources.world_map)
     if state.selection_start:
-        state.selection_start = _clamp_point(state.selection_start, new_resources.world_map)
+        state.selection_start = _clamp_point(
+            state.selection_start, new_resources.world_map
+        )
     if state.selection_end:
         state.selection_end = _clamp_point(state.selection_end, new_resources.world_map)
     state.last_message = "Reloaded world files."
@@ -565,9 +623,7 @@ def _path_mtime(path: Path) -> float | None:
         return None
 
 
-def _update_resource_mtime(
-    resources: EditorResources, field_name: str
-) -> None:
+def _update_resource_mtime(resources: EditorResources, field_name: str) -> None:
     if field_name == "world_json_mtime":
         mtime = _path_mtime(resources.world_json_path)
     elif field_name == "map_mtime":
@@ -671,7 +727,9 @@ def _handle_text_input(
             if color is None:
                 state.last_message = "Pick a valid color number."
                 return
-            _create_object_at_cursor(state, resources, state.pending_object_symbol or "*", color)
+            _create_object_at_cursor(
+                state, resources, state.pending_object_symbol or "*", color
+            )
             state.input_mode = None
             state.input_buffer = ""
             state.pending_object_name = None
@@ -794,10 +852,7 @@ def _dedupe_id(base: str, existing: set[str]) -> str:
 
 
 def _color_options_label() -> str:
-    return " ".join(
-        f"{index + 1}={color}"
-        for index, color in enumerate(OBJECT_COLORS)
-    )
+    return " ".join(f"{index + 1}={color}" for index, color in enumerate(OBJECT_COLORS))
 
 
 def _color_from_buffer(buffer: str) -> str | None:
@@ -815,13 +870,24 @@ def _color_from_buffer(buffer: str) -> str | None:
     return None
 
 
+def _key_from_event(event: Key) -> str:
+    key = event.key
+    if key in {"enter", "return"}:
+        return "ENTER"
+    if key == "backspace":
+        return "BACKSPACE"
+    if key == "delete":
+        return "DELETE"
+    if event.character:
+        return event.character
+    return key.upper()
+
+
 def _reload_label(last_reload_at: float | None) -> str:
     if last_reload_at is None:
         return "reload: -"
     stamp = time.strftime("%H:%M:%S", time.localtime(last_reload_at))
     return f"reload: {stamp}"
-
-
 
 
 def _selection_summary(state: EditorState, resources: EditorResources) -> Text:
@@ -844,9 +910,7 @@ def _selection_summary(state: EditorState, resources: EditorResources) -> Text:
     )
 
 
-def _room_for_point(
-    rooms: list[RoomDef], point: tuple[int, int]
-) -> RoomDef | None:
+def _room_for_point(rooms: list[RoomDef], point: tuple[int, int]) -> RoomDef | None:
     x, y = point
     for room in rooms:
         bounds = room.bounds
@@ -887,9 +951,7 @@ def _character_positions(
         bounds = room_map.get(char.start_room_id)
         if bounds is None:
             continue
-        positions[char.id] = _find_spawn_position(
-            resources.world_map, bounds, blocked
-        )
+        positions[char.id] = _find_spawn_position(resources.world_map, bounds, blocked)
     return positions
 
 
