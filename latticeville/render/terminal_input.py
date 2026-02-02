@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import select
+import time
 import sys
 import termios
 import tty
@@ -20,10 +21,12 @@ class InputEvent:
 
 
 _INPUT_BUFFER = ""
+_ESC_PENDING_AT: float | None = None
 
 
 def read_key() -> InputEvent | None:
     global _INPUT_BUFFER
+    global _ESC_PENDING_AT
     while True:
         ready, _, _ = select.select([sys.stdin], [], [], 0)
         if not ready:
@@ -32,6 +35,8 @@ def read_key() -> InputEvent | None:
         if chunk == "":
             break
         _INPUT_BUFFER += chunk
+        if chunk != "\x1b":
+            _ESC_PENDING_AT = None
 
     if not _INPUT_BUFFER:
         return None
@@ -42,6 +47,7 @@ def read_key() -> InputEvent | None:
             return None
         _INPUT_BUFFER = _INPUT_BUFFER[consumed:]
         return event
+    _ESC_PENDING_AT = None
 
     key = _INPUT_BUFFER[0]
     _INPUT_BUFFER = _INPUT_BUFFER[1:]
@@ -72,7 +78,14 @@ def raw_terminal():
 
 
 def _parse_escape_sequence(buffer: str) -> tuple[InputEvent | None, int]:
+    global _ESC_PENDING_AT
     if buffer == "\x1b":
+        if _ESC_PENDING_AT is None:
+            _ESC_PENDING_AT = time.monotonic()
+            return None, 0
+        if time.monotonic() - _ESC_PENDING_AT < 0.05:
+            return None, 0
+        _ESC_PENDING_AT = None
         return InputEvent(kind="key", key="ESC"), 1
     if buffer.startswith("\x1b["):
         if len(buffer) < 3:
@@ -89,6 +102,7 @@ def _parse_escape_sequence(buffer: str) -> tuple[InputEvent | None, int]:
             payload = buffer[3:end]
             char = buffer[end]
             event = _parse_mouse_payload(payload, char)
+            _ESC_PENDING_AT = None
             return event, end + 1
 
         for idx in range(2, len(buffer)):
@@ -96,13 +110,16 @@ def _parse_escape_sequence(buffer: str) -> tuple[InputEvent | None, int]:
             if char.isalpha() or char == "~":
                 seq = buffer[2 : idx + 1]
                 event = _parse_csi_sequence(seq)
+                _ESC_PENDING_AT = None
                 return event, idx + 1
         return None, 0
     if buffer.startswith("\x1bO"):
         if len(buffer) < 3:
             return None, 0
         event = _parse_ss3_sequence(buffer[2])
+        _ESC_PENDING_AT = None
         return event, 3
+    _ESC_PENDING_AT = None
     return InputEvent(kind="key", key="ESC"), 1
 
 
