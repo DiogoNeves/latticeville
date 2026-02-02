@@ -20,13 +20,17 @@ class InputEvent:
 
 
 _BUFFER = ""
+_SEQ_WAIT = 0.02
 
 
 def read_key() -> InputEvent | None:
-    _read_available()
+    _read_available(0.0)
     if not _BUFFER:
         return None
     event, consumed = _parse_buffer(_BUFFER)
+    if event is None and _BUFFER.startswith("\x1b"):
+        _read_available(_SEQ_WAIT)
+        event, consumed = _parse_buffer(_BUFFER)
     if consumed:
         _consume(consumed)
     return event
@@ -51,16 +55,17 @@ def raw_terminal():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def _read_available() -> None:
+def _read_available(timeout: float) -> None:
     global _BUFFER
     while True:
-        ready, _, _ = select.select([sys.stdin], [], [], 0)
+        ready, _, _ = select.select([sys.stdin], [], [], timeout)
         if not ready:
             break
         chunk = sys.stdin.read(1)
         if chunk == "":
             break
         _BUFFER += chunk
+        timeout = 0.0
 
 
 def _parse_buffer(buffer: str) -> tuple[InputEvent | None, int]:
