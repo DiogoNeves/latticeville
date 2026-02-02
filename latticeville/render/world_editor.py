@@ -223,8 +223,6 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
         elif state.input_mode == "object_color_edit":
             table.add_row("Edit color", state.input_buffer or "…")
             table.add_row("Colors", _color_options_label())
-        elif state.input_mode == "confirm_quit":
-            table.add_row("Quit?", state.input_buffer or "y/n")
     if state.pending_object_name and state.input_mode != "object_name":
         table.add_row("Pending obj", state.pending_object_name)
     if state.last_message:
@@ -269,10 +267,12 @@ def _handle_input(
 
     if key in {"q", "Q"}:
         if state.unsaved_rooms:
-            state.input_mode = "confirm_quit"
-            state.input_buffer = ""
-            state.last_message = "Unsaved rooms. Quit? (y/n)"
+            state.last_message = "Unsaved rooms. Press Ctrl+C to quit."
         else:
+            state.should_exit = True
+        return
+    if key == "CTRL_C":
+        if state.unsaved_rooms:
             state.should_exit = True
         return
     if key in {"c", "C"}:
@@ -646,14 +646,6 @@ def _handle_text_input(
     state: EditorState, resources: EditorResources, key: str
 ) -> None:
     if key in {"ENTER"}:
-        if state.input_mode == "confirm_quit":
-            if state.input_buffer.strip().lower() == "y":
-                state.should_exit = True
-            else:
-                state.last_message = "Quit cancelled."
-            state.input_mode = None
-            state.input_buffer = ""
-            return
         if state.input_mode == "object_name":
             name = state.input_buffer.strip()
             if not name:
@@ -707,10 +699,6 @@ def _handle_text_input(
         state.pending_object_symbol = None
         state.pending_object_id = None
         state.last_message = "Input cancelled."
-        return
-    if state.input_mode == "confirm_quit":
-        if key.lower() in {"y", "n"}:
-            state.input_buffer = key.lower()
         return
     if len(key) == 1 and key.isprintable():
         state.input_buffer += key
@@ -832,6 +820,8 @@ def _reload_label(last_reload_at: float | None) -> str:
         return "reload: -"
     stamp = time.strftime("%H:%M:%S", time.localtime(last_reload_at))
     return f"reload: {stamp}"
+
+
 
 
 def _selection_summary(state: EditorState, resources: EditorResources) -> Text:
