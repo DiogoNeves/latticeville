@@ -37,15 +37,12 @@ def build_valid_targets(
     portals: dict[str, dict[str, str]] | None = None,
 ) -> ValidTargets:
     _ = portals
-    locations = {
-        node.id for node in world.nodes.values() if node.type == "area"
-    }
+    locations = {node.id for node in world.nodes.values() if node.type == "area"}
     agent_area = resolve_area_id(world, agent.location_id) or agent.location_id
     objects = {
         node.id
         for node in world.nodes.values()
-        if node.type == "object"
-        and resolve_area_id(world, node.id) == agent_area
+        if node.type == "object" and resolve_area_id(world, node.id) == agent_area
     }
     agents = {
         node.id

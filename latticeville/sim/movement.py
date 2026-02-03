@@ -81,8 +81,14 @@ def _pick_room_target(
             if _is_walkable(world_map, x, y):
                 candidates.append((x, y))
     if candidates:
-        center = (room.bounds.x + room.bounds.width // 2, room.bounds.y + room.bounds.height // 2)
-        return min(candidates, key=lambda pos: abs(pos[0] - center[0]) + abs(pos[1] - center[1]))
+        center = (
+            room.bounds.x + room.bounds.width // 2,
+            room.bounds.y + room.bounds.height // 2,
+        )
+        return min(
+            candidates,
+            key=lambda pos: abs(pos[0] - center[0]) + abs(pos[1] - center[1]),
+        )
     return (room.bounds.x + 1, room.bounds.y + 1)
 
 

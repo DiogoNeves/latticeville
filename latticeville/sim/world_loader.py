@@ -117,7 +117,10 @@ def load_world_state(*, paths: WorldPaths | None = None) -> WorldState:
     map_path = (paths or WorldPaths()).base_dir / config.map_file
     world_map = _load_world_map(map_path)
 
-    rooms = {room.id: RoomState(room_id=room.id, name=room.name, bounds=room.bounds) for room in config.rooms}
+    rooms = {
+        room.id: RoomState(room_id=room.id, name=room.name, bounds=room.bounds)
+        for room in config.rooms
+    }
     objects = _resolve_objects(config.objects, rooms)
     blocked = {obj.position for obj in objects.values()}
 

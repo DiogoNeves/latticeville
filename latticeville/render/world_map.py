@@ -79,9 +79,7 @@ def render_map_lines(
     cursor: tuple[int, int] | None = None,
 ) -> list[Text]:
     grid = [list(line) for line in world_map.lines]
-    styles = [
-        [TILE_STYLES.get(ch, "grey70") for ch in row] for row in grid
-    ]
+    styles = [[TILE_STYLES.get(ch, "grey70") for ch in row] for row in grid]
     _apply_flower_styles(grid, styles)
     if room_areas:
         _apply_outside_floor_styles(grid, styles, room_areas)
@@ -103,9 +101,7 @@ def render_map_lines(
         if 0 <= y < world_map.height and 0 <= x < world_map.width:
             grid[y][x] = "@"
             styles[y][x] = (
-                SELECTED_AGENT_STYLE
-                if agent_id == selected_agent_id
-                else AGENT_STYLE
+                SELECTED_AGENT_STYLE if agent_id == selected_agent_id else AGENT_STYLE
             )
 
     _apply_boundary_styles(grid, styles)

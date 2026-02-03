@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from latticeville.llm.fake_llm import FakeLLM
-from latticeville.llm.prompts import ActInput, PromptId, parse_prompt_output, render_prompt
+from latticeville.llm.prompts import (
+    ActInput,
+    PromptId,
+    parse_prompt_output,
+    render_prompt,
+)
 from latticeville.sim.contracts import Action, ActionKind, coerce_action
 from latticeville.sim.world_state import AgentState
 

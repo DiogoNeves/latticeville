@@ -68,9 +68,7 @@ class PathFinder:
         x, y = current
         candidates = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
         return [
-            pos
-            for pos in candidates
-            if self._grid.is_walkable(pos[0], pos[1], blocked)
+            pos for pos in candidates if self._grid.is_walkable(pos[0], pos[1], blocked)
         ]
 
     @staticmethod

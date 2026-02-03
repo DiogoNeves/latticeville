@@ -77,9 +77,7 @@ def run_ticks(
         for agent_id in sorted(state.agents.keys()):
             agent = state.agents[agent_id]
             agent.location_id = snapshot_locations[agent_id]
-            valid_targets = build_valid_targets(
-                world_snapshot, agent=agent
-            )
+            valid_targets = build_valid_targets(world_snapshot, agent=agent)
             plan_step = None
             if agent_id in plan_cache:
                 for item in plan_cache[agent_id].actions:
@@ -127,7 +125,9 @@ def run_ticks(
             stream = memory_streams[agent_id]
             reflection_state = reflection_states[agent_id]
             location_node = state.world.nodes.get(agent.location_id)
-            location_name = location_node.name if location_node else agent.location_id or "Unknown"
+            location_name = (
+                location_node.name if location_node else agent.location_id or "Unknown"
+            )
             observations = _generate_observations(
                 llm_policy,
                 agent_name=agent.name,
@@ -514,7 +514,9 @@ def _decompose_plan(
             level=level,
             parent_plan=plan,
         )
-    fallback = decompose_to_hours(plan) if level == "hour" else decompose_to_actions(plan)
+    fallback = (
+        decompose_to_hours(plan) if level == "hour" else decompose_to_actions(plan)
+    )
     return _assign_parent_ids(fallback, plan)
 
 
@@ -671,9 +673,7 @@ def _new_plan_id() -> str:
     return uuid4().hex
 
 
-def _parent_id_for_tick(
-    parent_plan: list[PlanItem] | None, tick_id: int
-) -> str | None:
+def _parent_id_for_tick(parent_plan: list[PlanItem] | None, tick_id: int) -> str | None:
     if not parent_plan:
         return None
     for parent in parent_plan:
