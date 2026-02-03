@@ -90,14 +90,7 @@ class EditorResources:
 
 
 class WorldTree(Tree):
-    def on_key(self, event: Key) -> None:
-        if event.key == "space":
-            screen = self.app.screen
-            if hasattr(screen, "action_toggle_paint"):
-                screen.action_toggle_paint()
-            event.stop()
-            return
-        return super().on_key(event)
+    BINDINGS = [binding for binding in Tree.BINDINGS if binding.key != "space"]
 
 
 class PersonalityEditor(ModalScreen[str | None]):
