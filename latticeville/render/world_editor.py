@@ -303,6 +303,12 @@ class WorldEditorScreen(Screen):
         self.state.cursor = message.world_point
         self._refresh_ui()
 
+    def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
+        data = event.node.data
+        if isinstance(data, tuple) and len(data) == 2:
+            self.state.cursor = data
+            self._refresh_ui()
+
     def on_key(self, event: Key) -> None:
         if self.state.input_mode:
             if event.key == "ctrl+c":
@@ -489,7 +495,7 @@ def _populate_world_tree(
             object_label.append(f"{obj.name} ")
             object_label.append(f"{obj.position[0]},{obj.position[1]} ")
             object_label.append(obj.symbol, style=obj.color or OBJECT_STYLE)
-            room_node.add(object_label)
+            room_node.add(object_label, data=obj.position)
         for char in sorted(characters_by_room.get(room_id, []), key=lambda c: c.id):
             character_label = Text()
             character_label.append(f"{char.name} ")
@@ -497,7 +503,7 @@ def _populate_world_tree(
             if pos:
                 character_label.append(f"{pos[0]},{pos[1]} ")
             character_label.append(char.symbol, style=AGENT_STYLE)
-            room_node.add(character_label)
+            room_node.add(character_label, data=pos)
 
     for room in state.rooms:
         bounds = room.bounds
