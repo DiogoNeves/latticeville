@@ -40,6 +40,7 @@ class MlxLLM(LLMPolicy):
                 valid_objects=sorted(valid_targets.objects),
                 valid_agents=sorted(valid_targets.agents),
                 plan_step=plan_step,
+                personality=agent.personality or None,
             ),
         )
         response = self.complete_prompt(prompt_id=PromptId.ACT.value, prompt=prompt)

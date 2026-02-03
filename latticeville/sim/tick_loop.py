@@ -61,6 +61,13 @@ def run_ticks(
     reflection_states = {
         agent_id: ReflectionState(threshold=10.0) for agent_id in state.agents.keys()
     }
+    _seed_personalities(
+        llm_policy,
+        state,
+        memory_streams=memory_streams,
+        reflection_states=reflection_states,
+        memory_log_path=memory_log_path,
+    )
     plan_cache: dict[str, PlanHierarchy] = {}
     dialogue_histories: dict[tuple[str, str], list[str]] = {}
     pathfinder = PathFinder(build_grid(state.world_map))
@@ -115,8 +122,6 @@ def run_ticks(
             if event:
                 events.append(event)
                 move_events_by_agent[agent_id] = event
-                if agent.travel_destination is None:
-                    agent.set_route_index(agent.location_id)
 
         tick_id = state.tick + 1
         memory_events: list[Event] = []
@@ -184,6 +189,7 @@ def run_ticks(
                         observation=observations[0] if observations else "",
                         memory_context=recent_memories,
                         plan_context=plan_context,
+                        personality=agent.personality,
                     ),
                 )
                 if utterance:
@@ -255,7 +261,10 @@ def run_ticks(
 
             if agent_id not in plan_cache:
                 hierarchy = _build_plan_hierarchy(
-                    llm_policy, agent.name, tick_id, context=None
+                    llm_policy,
+                    agent.name,
+                    tick_id,
+                    context=_plan_context(agent.personality, None),
                 )
                 plan_cache[agent_id] = hierarchy
                 for item in hierarchy.day:
@@ -328,7 +337,7 @@ def run_ticks(
                     llm_policy,
                     agent.name,
                     tick_id,
-                    context=react_output.reaction,
+                    context=_plan_context(agent.personality, react_output.reaction),
                 )
                 plan_cache[agent_id] = hierarchy
                 for item in hierarchy.day:
@@ -468,8 +477,48 @@ def _score_importance(
         "action": 3.0,
         "plan": 1.0,
         "reflection": 3.0,
+        "identity": 4.0,
     }
     return fallback.get(memory_type, 2.0)
+
+
+def _seed_personalities(
+    policy: LLMPolicy,
+    state: WorldState,
+    *,
+    memory_streams: dict[str, MemoryStream],
+    reflection_states: dict[str, ReflectionState],
+    memory_log_path: Path | None,
+) -> None:
+    for agent_id, agent in state.agents.items():
+        personality = (agent.personality or "").strip()
+        if not personality:
+            continue
+        importance = _score_importance(
+            policy,
+            memory_text=personality,
+            memory_type="identity",
+        )
+        record = memory_streams[agent_id].append(
+            description=personality,
+            created_at=state.tick,
+            importance=importance,
+            type="identity",
+        )
+        reflection_states[agent_id].record_importance(record.importance)
+        if memory_log_path:
+            append_memory_record(memory_log_path, agent_id=agent_id, record=record)
+
+
+def _plan_context(personality: str | None, reaction: str | None) -> str | None:
+    parts = []
+    if personality:
+        parts.append(f"Personality: {personality}")
+    if reaction:
+        parts.append(f"Reaction: {reaction}")
+    if not parts:
+        return None
+    return " ".join(parts)
 
 
 def _build_day_plan(
@@ -768,8 +817,11 @@ def _dialogue_context(
     observation: str,
     memory_context: str,
     plan_context: str | None,
+    personality: str | None,
 ) -> str:
     parts = []
+    if personality:
+        parts.append(f"Personality: {personality}")
     if observation:
         parts.append(f"Observation: {observation}")
     if memory_context:

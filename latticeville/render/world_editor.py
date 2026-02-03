@@ -14,8 +14,8 @@ from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.events import Key
-from textual.screen import Screen
-from textual.widgets import Static, Tree
+from textual.screen import ModalScreen, Screen
+from textual.widgets import Input, Static, Tree
 from textual.containers import Horizontal, Vertical
 
 from latticeville.render.textual_app import LatticevilleApp
@@ -34,7 +34,7 @@ from latticeville.sim.world_tiles import is_walkable
 
 
 LEFT_WIDTH = 44
-RIGHT_WIDTH = 36
+RIGHT_WIDTH = 44
 OBJECT_COLORS = [
     "yellow",
     "blue",
@@ -64,6 +64,7 @@ class EditorState:
     pending_object_name: str | None = None
     pending_object_symbol: str | None = None
     pending_object_id: str | None = None
+    pending_character_id: str | None = None
     unsaved_rooms: bool = False
     tree_dirty: bool = True
 
@@ -81,9 +82,58 @@ class EditorResources:
     world_map: WorldMap
     objects: dict[str, ObjectState]
     world_json_path: Path
+    characters_json_path: Path
     map_path: Path
     world_json_mtime: float | None
+    characters_json_mtime: float | None
     map_mtime: float | None
+
+
+class PersonalityEditor(ModalScreen[str | None]):
+    CSS = """
+    PersonalityEditor {
+        align: center middle;
+    }
+    #dialog {
+        width: 80%;
+        max-width: 100;
+        border: round $accent;
+        padding: 1 2;
+        background: $panel;
+    }
+    #personality-input {
+        width: 1fr;
+    }
+    """
+
+    BINDINGS = [
+        ("enter", "submit", "Submit"),
+        ("escape", "cancel", "Cancel"),
+        ("ctrl+c", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, name: str, personality: str) -> None:
+        super().__init__()
+        self._name = name
+        self._value = personality
+        self._input: Input | None = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(f"Edit personality for {self._name}")
+            yield Static("Use a short description + semicolon-delimited traits.")
+            yield Input(value=self._value, id="personality-input")
+
+    def on_mount(self) -> None:
+        self._input = self.query_one("#personality-input", Input)
+        self._input.focus()
+
+    def action_submit(self) -> None:
+        value = self._input.value if self._input else self._value
+        self.dismiss(value)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
 
 
 class WorldEditorScreen(Screen):
@@ -120,7 +170,7 @@ class WorldEditorScreen(Screen):
         ("t", "set_top_left", "Set top-left"),
         ("b", "set_bottom_right", "Set bottom-right"),
         ("s", "save", "Save"),
-        ("space", "toggle_paint", "Paint"),
+        ("space", "toggle_paint", "Paint/Edit"),
         ("c", "clear_paint", "Clear paint"),
         ("delete", "erase", "Erase"),
         ("o", "create_object", "Object"),
@@ -194,7 +244,7 @@ class WorldEditorScreen(Screen):
             )
         if self._editor_panel:
             self._editor_panel.update(
-                Panel(_render_editor_panel(self.state), title="Editor")
+                Panel(_render_editor_panel(self.state, self.resources), title="Editor")
             )
         if self._status_bar:
             self._status_bar.update(_render_status_bar(self.state))
@@ -308,6 +358,15 @@ class WorldEditorScreen(Screen):
     def action_toggle_paint(self) -> None:
         if self.state.input_mode:
             return
+        char = _character_for_point(self.resources, self.state.rooms, self.state.cursor)
+        if char:
+            self.state.pending_character_id = char.id
+            self.state.last_message = f"Edit personality for {char.name}."
+            self.app.push_screen(
+                PersonalityEditor(char.name, char.personality),
+                self._handle_personality_result,
+            )
+            return
         obj = _object_for_point(self.resources.objects, self.state.cursor)
         if obj:
             self.state.input_mode = "object_color_edit"
@@ -333,6 +392,7 @@ class WorldEditorScreen(Screen):
         self.state.pending_object_name = None
         self.state.pending_object_symbol = None
         self.state.pending_object_id = None
+        self.state.pending_character_id = None
         self.state.last_message = "Paint cleared."
         self._refresh_ui()
 
@@ -364,6 +424,28 @@ class WorldEditorScreen(Screen):
     def action_force_quit(self) -> None:
         if self.state.unsaved_rooms:
             self.app.exit()
+
+    def _handle_personality_result(self, result: str | None) -> None:
+        if result is None:
+            self.state.last_message = "Personality edit cancelled."
+            self.state.pending_character_id = None
+            self._refresh_ui()
+            return
+        personality = result.strip()
+        if not personality:
+            self.state.last_message = "Personality required."
+            self.state.pending_character_id = None
+            self._refresh_ui()
+            return
+        if self.state.pending_character_id:
+            _update_character_personality(
+                self.resources,
+                self.state.pending_character_id,
+                personality,
+            )
+            self.state.last_message = "Personality updated."
+        self.state.pending_character_id = None
+        self._refresh_ui()
 
 
 def run_world_editor(*, base_dir: Path | None = None) -> None:
@@ -435,7 +517,7 @@ def _populate_world_tree(
     root.expand()
 
 
-def _render_editor_panel(state: EditorState) -> RenderableType:
+def _render_editor_panel(state: EditorState, resources: EditorResources) -> RenderableType:
     table = Table(show_header=False)
     table.add_column("Field")
     table.add_column("Value")
@@ -467,6 +549,10 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
             table.add_row("Colors", _color_options_label())
     if state.pending_object_name and state.input_mode != "object_name":
         table.add_row("Pending obj", state.pending_object_name)
+    character = _character_for_point(resources, state.rooms, state.cursor)
+    if character:
+        personality = character.personality or "-"
+        table.add_row("Personality", personality)
     if state.last_message:
         table.add_row("Note", state.last_message)
     return table
@@ -475,7 +561,7 @@ def _render_editor_panel(state: EditorState) -> RenderableType:
 def _render_status_bar(state: EditorState) -> Panel:
     text = Text(
         "Editor: arrows=move | t=set top-left | b=set bottom-right | s=save | "
-        "space=paint | c=clear paint | del=erase | o=object | q=quit | "
+        "space=paint/edit | c=clear paint | del=erase | o=object | q=quit | "
         + _reload_label(state.last_reload_at),
         style="bold",
     )
@@ -566,6 +652,7 @@ def _load_editor_resources(*, base_dir: Path | None) -> EditorResources:
     paths = WorldPaths(base_dir=base_dir)
     config = load_world_config(paths=paths)
     world_json_path = paths.world_json
+    characters_json_path = paths.characters_json
     map_path = base_dir / config.map_file
     world_map = _load_world_map(map_path)
     objects = {
@@ -584,8 +671,10 @@ def _load_editor_resources(*, base_dir: Path | None) -> EditorResources:
         world_map=world_map,
         objects=objects,
         world_json_path=world_json_path,
+        characters_json_path=characters_json_path,
         map_path=map_path,
         world_json_mtime=_path_mtime(world_json_path),
+        characters_json_mtime=_path_mtime(characters_json_path),
         map_mtime=_path_mtime(map_path),
     )
 
@@ -601,9 +690,11 @@ def _maybe_reload_resources(
     state: EditorState, resources: EditorResources
 ) -> EditorResources:
     world_json_mtime = _path_mtime(resources.world_json_path)
+    characters_json_mtime = _path_mtime(resources.characters_json_path)
     map_mtime = _path_mtime(resources.map_path)
     if (
         world_json_mtime == resources.world_json_mtime
+        and characters_json_mtime == resources.characters_json_mtime
         and map_mtime == resources.map_mtime
     ):
         return resources
@@ -648,6 +739,8 @@ def _path_mtime(path: Path) -> float | None:
 def _update_resource_mtime(resources: EditorResources, field_name: str) -> None:
     if field_name == "world_json_mtime":
         mtime = _path_mtime(resources.world_json_path)
+    elif field_name == "characters_json_mtime":
+        mtime = _path_mtime(resources.characters_json_path)
     elif field_name == "map_mtime":
         mtime = _path_mtime(resources.map_path)
     else:
@@ -849,6 +942,22 @@ def _update_object_color(
             color=color,
         )
     _update_resource_mtime(resources, "world_json_mtime")
+
+
+def _update_character_personality(
+    resources: EditorResources, character_id: str, personality: str
+) -> None:
+    payload = json.loads(resources.characters_json_path.read_text(encoding="utf-8"))
+    characters = payload.get("characters", [])
+    for char in characters:
+        if char.get("id") == character_id:
+            char["personality"] = personality
+            break
+    payload["characters"] = characters
+    resources.characters_json_path.write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
+    _update_resource_mtime(resources, "characters_json_mtime")
 
 
 def _delete_object(resources: EditorResources, object_id: str) -> None:

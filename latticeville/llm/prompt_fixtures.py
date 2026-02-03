@@ -100,6 +100,7 @@ def _importance_by_type(memory_type: str | None) -> int:
         "action": 3,
         "plan": 1,
         "reflection": 3,
+        "identity": 4,
     }
     return mapping.get(memory_type or "", 2)
 

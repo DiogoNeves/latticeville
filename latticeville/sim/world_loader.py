@@ -54,7 +54,7 @@ class CharacterDef:
     name: str
     symbol: str
     start_room_id: str
-    patrol_route: list[str]
+    personality: str
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,7 @@ def load_world_config(*, paths: WorldPaths | None = None) -> WorldConfig:
             name=char.get("name", char["id"].title()),
             symbol=char.get("symbol", "@"),
             start_room_id=char["start_room_id"],
-            patrol_route=char.get("patrol_route", [char["start_room_id"]]),
+            personality=char.get("personality", ""),
         )
         for char in characters_data.get("characters", [])
     ]
@@ -175,7 +175,7 @@ def load_world_state(*, paths: WorldPaths | None = None) -> WorldState:
             name=char.name,
             location_id=char.start_room_id,
             position=start_pos,
-            patrol_route=char.patrol_route,
+            personality=char.personality,
         )
 
     world = WorldTree(root_id="world", nodes=nodes)

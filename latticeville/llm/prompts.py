@@ -156,6 +156,7 @@ class ActInput(BaseModel):
     valid_objects: list[str]
     valid_agents: list[str]
     plan_step: str | None = None
+    personality: str | None = None
 
 
 @dataclass(frozen=True)
@@ -268,7 +269,8 @@ CATALOG: dict[PromptId, PromptSpec] = {
     PromptId.ACT: PromptSpec(
         prompt_id=PromptId.ACT,
         instruction=(
-            "Choose exactly one action. Return only JSON matching the action schema: "
+            "Choose exactly one action. Consider the agent personality and plan step. "
+            "Return only JSON matching the action schema: "
             '{ "kind": "IDLE|MOVE|INTERACT|SAY", '
             '"move": {"to_location_id": "..."}, '
             '"interact": {"object_id": "...", "verb": "USE|OPEN|CLOSE|TAKE|DROP"}, '

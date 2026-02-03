@@ -5,28 +5,28 @@
       "name": "Ada",
       "symbol": "@",
       "start_room_id": "adas",
-      "patrol_route": ["adas", "byrons"]
+      "personality": "Ada is a meticulous builder who lives in Ada's House and enjoys organizing the town's spaces. Traits: curious; methodical; warm; observant."
     },
     {
       "id": "byron",
       "name": "Byron",
       "symbol": "@",
       "start_room_id": "byrons",
-      "patrol_route": ["byrons", "restaurant"]
+      "personality": "Byron is a friendly barista who lives in Byron's House and likes chatting with neighbors. Traits: outgoing; upbeat; talkative; considerate."
     },
     {
       "id": "cleo",
       "name": "Cleo",
       "symbol": "@",
       "start_room_id": "cleos",
-      "patrol_route": ["cleos"]
+      "personality": "Cleo is a quiet librarian who keeps Cleo's House tidy and loves reading. Traits: calm; thoughtful; detail-oriented; patient."
     },
     {
       "id": "dax",
       "name": "Dax",
       "symbol": "@",
       "start_room_id": "restaurant",
-      "patrol_route": ["restaurant"]
+      "personality": "Dax is a pragmatic cook who works at the restaurant and keeps the kitchen running smoothly. Traits: energetic; practical; direct; collaborative."
     }
   ]
 }

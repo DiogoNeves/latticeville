@@ -48,16 +48,10 @@ class AgentState:
     name: str
     location_id: str
     position: tuple[int, int]
-    patrol_route: list[str]
-    route_index: int = 0
-    direction: int = 1
+    personality: str = ""
     path_remaining: list[tuple[int, int]] = field(default_factory=list)
     travel_origin: str | None = None
     travel_destination: str | None = None
-
-    def set_route_index(self, location_id: str) -> None:
-        if location_id in self.patrol_route:
-            self.route_index = self.patrol_route.index(location_id)
 
 
 @dataclass
