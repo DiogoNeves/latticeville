@@ -93,6 +93,8 @@ class WorldEditorScreen(Screen):
     }
     #world-tree {
         border: tall $accent;
+        height: 1fr;
+        overflow: auto;
     }
     #main {
         layout: horizontal;
@@ -146,7 +148,10 @@ class WorldEditorScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical(id="root"):
             with Horizontal(id="main"):
-                yield Tree("World", id="world-tree")
+                yield Tree(
+                    Text("World", style=TILE_STYLES.get("#", "grey50")),
+                    id="world-tree",
+                )
                 with Vertical(id="center-pane"):
                     yield Static(id="selection-bar")
                     yield MapWidget(
@@ -164,11 +169,12 @@ class WorldEditorScreen(Screen):
         self._status_bar = self.query_one("#status-bar", Static)
         self._map_widget = self.query_one(MapWidget)
         self._world_tree.styles.width = LEFT_WIDTH
-        self._world_tree.can_focus = False
         self._world_tree.show_root = True
         self._world_tree.border_title = "World Tree"
         self._editor_panel.styles.width = RIGHT_WIDTH
         self._refresh_ui()
+        if self._map_widget:
+            self.set_focus(self._map_widget)
         self.set_interval(0.15, self._tick)
 
     def _tick(self) -> None:
