@@ -34,7 +34,7 @@ from latticeville.sim.world_tiles import is_walkable
 
 
 LEFT_WIDTH = 44
-RIGHT_WIDTH = 44
+RIGHT_WIDTH = 48
 OBJECT_COLORS = [
     "yellow",
     "blue",
@@ -87,6 +87,17 @@ class EditorResources:
     world_json_mtime: float | None
     characters_json_mtime: float | None
     map_mtime: float | None
+
+
+class WorldTree(Tree):
+    def on_key(self, event: Key) -> None:
+        if event.key == "space":
+            screen = self.app.screen
+            if hasattr(screen, "action_toggle_paint"):
+                screen.action_toggle_paint()
+            event.stop()
+            return
+        return super().on_key(event)
 
 
 class PersonalityEditor(ModalScreen[str | None]):
@@ -198,7 +209,7 @@ class WorldEditorScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical(id="root"):
             with Horizontal(id="main"):
-                yield Tree(
+                yield WorldTree(
                     Text("World", style=TILE_STYLES.get("#", "grey50")),
                     id="world-tree",
                 )
