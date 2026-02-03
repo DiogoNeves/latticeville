@@ -67,7 +67,7 @@
       "id": "counter",
       "name": "Counter",
       "room_id": "cafe",
-      "symbol": "*",
+      "symbol": "=",
       "position": {
         "x": 54,
         "y": 14
