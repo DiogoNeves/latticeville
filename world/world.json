@@ -1,269 +1,182 @@
 {
-  "map_file": "world.map",
-  "rooms": [
-    {
-      "id": "byrons",
-      "name": "Byron's House",
-      "bounds": {
-        "x": 2,
-        "y": 2,
-        "width": 14,
-        "height": 6
-      }
-    },
-    {
-      "id": "adas",
-      "name": "Ada's House",
-      "bounds": {
-        "x": 20,
-        "y": 2,
-        "width": 14,
-        "height": 6
-      }
-    },
-    {
-      "id": "cleos",
-      "name": "Cleo's House",
-      "bounds": {
-        "x": 38,
-        "y": 2,
-        "width": 14,
-        "height": 6
-      }
-    },
-    {
-      "id": "restaurant",
-      "name": "Restaurant",
-      "bounds": {
-        "x": 33,
-        "y": 13,
-        "width": 10,
-        "height": 10
-      }
-    },
-    {
-      "id": "cafe",
-      "name": "Mochi Cafe",
-      "bounds": {
-        "x": 53,
-        "y": 13,
-        "width": 19,
-        "height": 7
-      }
-    },
-    {
-      "id": "market",
-      "name": "Market",
-      "bounds": {
-        "x": 56,
-        "y": 2,
-        "width": 25,
-        "height": 6
-      }
-    }
-  ],
-  "objects": [
-    {
-      "id": "counter",
-      "name": "Counter",
-      "room_id": "cafe",
-      "symbol": "*",
-      "position": {
-        "x": 7,
-        "y": 4
-      }
-    },
-    {
-      "id": "shelf",
-      "name": "Shelf",
-      "room_id": "library",
-      "symbol": "S",
-      "position": {
-        "x": 25,
-        "y": 4
-      }
-    },
-    {
-      "id": "stall",
-      "name": "Stall",
-      "room_id": "market",
-      "symbol": "K",
-      "position": {
-        "x": 45,
-        "y": 4
-      }
-    },
-    {
-      "id": "coffee_machine",
-      "name": "coffee machine",
-      "room_id": "cafe",
-      "symbol": "C",
-      "position": {
-        "x": 54,
-        "y": 17
-      }
-    },
-    {
-      "id": "table1",
-      "name": "table1",
-      "room_id": "cafe",
-      "symbol": "t",
-      "position": {
-        "x": 59,
-        "y": 16
-      }
-    },
-    {
-      "id": "chair11",
-      "name": "chair11",
-      "room_id": "cafe",
-      "symbol": "c",
-      "position": {
-        "x": 60,
-        "y": 16
-      },
-      "color": "blue"
-    },
-    {
-      "id": "chair12",
-      "name": "chair12",
-      "room_id": "cafe",
-      "symbol": "c",
-      "position": {
-        "x": 58,
-        "y": 16
-      },
-      "color": "blue"
-    },
-    {
-      "id": "chair13",
-      "name": "chair13",
-      "room_id": "cafe",
-      "symbol": "c",
-      "position": {
-        "x": 59,
-        "y": 15
-      },
-      "color": "blue"
-    },
-    {
-      "id": "table2",
-      "name": "table2",
-      "room_id": "cafe",
-      "symbol": "t",
-      "position": {
-        "x": 65,
-        "y": 15
-      }
-    },
-    {
-      "id": "table2_2",
-      "name": "table2",
-      "room_id": "cafe",
-      "symbol": "t",
-      "position": {
-        "x": 65,
-        "y": 16
-      }
-    },
-    {
-      "id": "chair21",
-      "name": "chair21",
-      "room_id": "cafe",
-      "symbol": "c",
-      "position": {
-        "x": 64,
-        "y": 15
-      },
-      "color": "blue"
-    },
-    {
-      "id": "chair22",
-      "name": "chair22",
-      "room_id": "cafe",
-      "symbol": "c",
-      "position": {
-        "x": 64,
-        "y": 16
-      },
-      "color": "blue"
-    },
-    {
-      "id": "chair23",
-      "name": "chair23",
-      "room_id": "cafe",
-      "symbol": "c",
-      "position": {
-        "x": 66,
-        "y": 16
-      },
-      "color": "blue"
-    },
-    {
-      "id": "chair24",
-      "name": "chair24",
-      "room_id": "cafe",
-      "symbol": "c",
-      "position": {
-        "x": 66,
-        "y": 15
-      },
-      "color": "blue"
-    },
-    {
-      "id": "fruit1",
-      "name": "fruit1",
-      "room_id": "market",
-      "symbol": "f",
-      "position": {
-        "x": 59,
-        "y": 3
-      },
-      "color": "red"
-    },
-    {
-      "id": "fruit2",
-      "name": "fruit2",
-      "room_id": "market",
-      "symbol": "f",
-      "position": {
-        "x": 60,
-        "y": 3
-      },
-      "color": "red"
-    },
-    {
-      "id": "veg1",
-      "name": "veg1",
-      "room_id": "market",
-      "symbol": "v",
-      "position": {
-        "x": 62,
-        "y": 3
-      },
-      "color": "green"
-    },
-    {
-      "id": "veg2",
-      "name": "veg2",
-      "room_id": "market",
-      "symbol": "v",
-      "position": {
-        "x": 63,
-        "y": 3
-      },
-      "color": "green"
-    },
-    {
-      "id": "bakery",
-      "name": "bakery",
-      "room_id": "market",
-      "symbol": "b",
-      "color": "white",
-      "position": {
-        "x": 65,
-        "y": 3
-      }
-    }
-  ]
+    "map_file": "world.map",
+    "rooms": [
+        {
+            "id": "byrons",
+            "name": "Byron's House",
+            "bounds": {"x": 2, "y": 2, "width": 14, "height": 6},
+        },
+        {
+            "id": "adas",
+            "name": "Ada's House",
+            "bounds": {"x": 20, "y": 2, "width": 14, "height": 6},
+        },
+        {
+            "id": "cleos",
+            "name": "Cleo's House",
+            "bounds": {"x": 38, "y": 2, "width": 14, "height": 6},
+        },
+        {
+            "id": "restaurant",
+            "name": "Restaurant",
+            "bounds": {"x": 33, "y": 13, "width": 10, "height": 10},
+        },
+        {
+            "id": "cafe",
+            "name": "Mochi Cafe",
+            "bounds": {"x": 53, "y": 13, "width": 19, "height": 7},
+        },
+        {
+            "id": "market",
+            "name": "Market",
+            "bounds": {"x": 56, "y": 2, "width": 25, "height": 6},
+        },
+    ],
+    "objects": [
+        {
+            "id": "counter",
+            "name": "Counter",
+            "room_id": "cafe",
+            "symbol": "*",
+            "position": {"x": 7, "y": 4},
+        },
+        {
+            "id": "shelf",
+            "name": "Shelf",
+            "room_id": "adas",
+            "symbol": "S",
+            "position": {"x": 25, "y": 4},
+        },
+        {
+            "id": "stall",
+            "name": "Stall",
+            "room_id": "market",
+            "symbol": "K",
+            "position": {"x": 45, "y": 4},
+        },
+        {
+            "id": "coffee_machine",
+            "name": "coffee machine",
+            "room_id": "cafe",
+            "symbol": "C",
+            "position": {"x": 54, "y": 17},
+        },
+        {
+            "id": "table1",
+            "name": "table1",
+            "room_id": "cafe",
+            "symbol": "t",
+            "position": {"x": 59, "y": 16},
+        },
+        {
+            "id": "chair11",
+            "name": "chair11",
+            "room_id": "cafe",
+            "symbol": "c",
+            "position": {"x": 60, "y": 16},
+            "color": "blue",
+        },
+        {
+            "id": "chair12",
+            "name": "chair12",
+            "room_id": "cafe",
+            "symbol": "c",
+            "position": {"x": 58, "y": 16},
+            "color": "blue",
+        },
+        {
+            "id": "chair13",
+            "name": "chair13",
+            "room_id": "cafe",
+            "symbol": "c",
+            "position": {"x": 59, "y": 15},
+            "color": "blue",
+        },
+        {
+            "id": "table2",
+            "name": "table2",
+            "room_id": "cafe",
+            "symbol": "t",
+            "position": {"x": 65, "y": 15},
+        },
+        {
+            "id": "table2_2",
+            "name": "table2",
+            "room_id": "cafe",
+            "symbol": "t",
+            "position": {"x": 65, "y": 16},
+        },
+        {
+            "id": "chair21",
+            "name": "chair21",
+            "room_id": "cafe",
+            "symbol": "c",
+            "position": {"x": 64, "y": 15},
+            "color": "blue",
+        },
+        {
+            "id": "chair22",
+            "name": "chair22",
+            "room_id": "cafe",
+            "symbol": "c",
+            "position": {"x": 64, "y": 16},
+            "color": "blue",
+        },
+        {
+            "id": "chair23",
+            "name": "chair23",
+            "room_id": "cafe",
+            "symbol": "c",
+            "position": {"x": 66, "y": 16},
+            "color": "blue",
+        },
+        {
+            "id": "chair24",
+            "name": "chair24",
+            "room_id": "cafe",
+            "symbol": "c",
+            "position": {"x": 66, "y": 15},
+            "color": "blue",
+        },
+        {
+            "id": "fruit1",
+            "name": "fruit1",
+            "room_id": "market",
+            "symbol": "f",
+            "position": {"x": 59, "y": 3},
+            "color": "red",
+        },
+        {
+            "id": "fruit2",
+            "name": "fruit2",
+            "room_id": "market",
+            "symbol": "f",
+            "position": {"x": 60, "y": 3},
+            "color": "red",
+        },
+        {
+            "id": "veg1",
+            "name": "veg1",
+            "room_id": "market",
+            "symbol": "v",
+            "position": {"x": 62, "y": 3},
+            "color": "green",
+        },
+        {
+            "id": "veg2",
+            "name": "veg2",
+            "room_id": "market",
+            "symbol": "v",
+            "position": {"x": 63, "y": 3},
+            "color": "green",
+        },
+        {
+            "id": "bakery",
+            "name": "bakery",
+            "room_id": "market",
+            "symbol": "b",
+            "color": "white",
+            "position": {"x": 65, "y": 3},
+        },
+    ],
 }
