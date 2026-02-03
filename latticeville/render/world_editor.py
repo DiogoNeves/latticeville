@@ -386,6 +386,25 @@ def _populate_world_tree(
     characters_by_room: dict[str, list] = {}
     for char in resources.config.characters:
         characters_by_room.setdefault(char.start_room_id, []).append(char)
+    rooms_by_id = {room.room_id: room for room in state.rooms}
+    positions = _character_positions(resources, state.rooms)
+
+    def add_room_node(room_id: str, label: Text) -> None:
+        room_node = root.add(label)
+        for obj in sorted(objects_by_room.get(room_id, []), key=lambda o: o.object_id):
+            object_label = Text()
+            object_label.append(f"{obj.name} ")
+            object_label.append(f"{obj.position[0]},{obj.position[1]} ")
+            object_label.append(obj.symbol, style=obj.color or OBJECT_STYLE)
+            room_node.add(object_label)
+        for char in sorted(characters_by_room.get(room_id, []), key=lambda c: c.id):
+            character_label = Text()
+            character_label.append(f"{char.name} ")
+            pos = positions.get(char.id)
+            if pos:
+                character_label.append(f"{pos[0]},{pos[1]} ")
+            character_label.append(char.symbol, style=AGENT_STYLE)
+            room_node.add(character_label)
 
     for room in state.rooms:
         bounds = room.bounds
@@ -394,25 +413,22 @@ def _populate_world_tree(
             f"({room.room_id})",
             style=room_style,
         )
-        room_node = root.add(room_label)
-        for obj in sorted(
-            objects_by_room.get(room.room_id, []), key=lambda o: o.object_id
-        ):
-            object_label = Text()
-            object_label.append(f"{obj.name} ")
-            object_label.append(
-                f"{obj.position[0]},{obj.position[1]} ({obj.object_id}) "
-            )
-            object_label.append(obj.symbol, style=obj.color or OBJECT_STYLE)
-            room_node.add(object_label)
-        for char in sorted(
-            characters_by_room.get(room.room_id, []), key=lambda c: c.id
-        ):
-            character_label = Text()
-            character_label.append(f"{char.name} ")
-            character_label.append(f"({char.id}) ")
-            character_label.append(char.symbol, style=AGENT_STYLE)
-            room_node.add(character_label)
+        add_room_node(room.room_id, room_label)
+
+    outside_objects = objects_by_room.get("", [])
+    outside_chars = characters_by_room.get("", [])
+    if outside_objects or outside_chars:
+        outside_label = Text("Outside", style=room_style)
+        add_room_node("", outside_label)
+
+    extra_room_ids = sorted(
+        room_id
+        for room_id in (set(objects_by_room) | set(characters_by_room))
+        if room_id and room_id not in rooms_by_id
+    )
+    for room_id in extra_room_ids:
+        missing_label = Text(f"{room_id} (missing)", style=room_style)
+        add_room_node(room_id, missing_label)
 
     if not state.rooms:
         root.add("No rooms defined")

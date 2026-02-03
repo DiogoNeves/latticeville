@@ -27,8 +27,8 @@ class MapRenderResult:
 class MapClicked(Message):
     """Message emitted when a map click resolves to world coordinates."""
 
-    def __init__(self, sender: Widget, *, world_point: tuple[int, int]) -> None:
-        super().__init__(sender)
+    def __init__(self, *, world_point: tuple[int, int]) -> None:
+        super().__init__()
         self.world_point = world_point
 
 
@@ -74,4 +74,4 @@ class MapWidget(Widget):
             return
         world_x = self._viewport.x + (x - self._offset_x)
         world_y = self._viewport.y + (y - self._offset_y)
-        self.post_message(MapClicked(self, world_point=(world_x, world_y)))
+        self.post_message(MapClicked(world_point=(world_x, world_y)))
