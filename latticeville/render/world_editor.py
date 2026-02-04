@@ -65,6 +65,7 @@ class EditorState:
     pending_object_symbol: str | None = None
     pending_object_id: str | None = None
     pending_character_id: str | None = None
+    suppress_tree_events: bool = False
     unsaved_rooms: bool = False
     tree_dirty: bool = True
 
@@ -90,7 +91,18 @@ class EditorResources:
 
 
 class WorldTree(Tree):
-    BINDINGS = [binding for binding in Tree.BINDINGS if binding.key != "space"]
+    def action_toggle_node(self) -> None:
+        node = self.cursor_node
+        if node is None:
+            return
+        if not node.children:
+            screen = self.app.screen
+            if hasattr(screen, "_select_tree_leaf"):
+                screen._select_tree_leaf(node)
+            if hasattr(screen, "action_toggle_paint"):
+                screen.action_toggle_paint()
+            return
+        super().action_toggle_node()
 
 
 class PersonalityEditor(ModalScreen[str | None]):
@@ -294,13 +306,54 @@ class WorldEditorScreen(Screen):
 
     def on_map_clicked(self, message: MapClicked) -> None:
         self.state.cursor = message.world_point
+        self._sync_tree_selection_for_cursor()
         self._refresh_ui()
 
     def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
+        if self.state.suppress_tree_events:
+            return
         data = event.node.data
+        if isinstance(data, dict) and "position" in data:
+            position = data["position"]
+            if isinstance(position, tuple) and len(position) == 2:
+                self.state.cursor = position
+                self._refresh_ui()
+                return
         if isinstance(data, tuple) and len(data) == 2:
             self.state.cursor = data
             self._refresh_ui()
+
+    def _select_tree_leaf(self, node) -> None:
+        data = getattr(node, "data", None)
+        if isinstance(data, dict):
+            position = data.get("position")
+            if isinstance(position, tuple) and len(position) == 2:
+                self.state.cursor = position
+                self._refresh_ui()
+
+    def _sync_tree_selection_for_cursor(self) -> None:
+        if not self._world_tree:
+            return
+        obj = _object_for_point(self.resources.objects, self.state.cursor)
+        char = _character_for_point(self.resources, self.state.rooms, self.state.cursor)
+        if obj is None and char is None:
+            return
+        target_kind = "character" if char else "object"
+        target_id = char.id if char else obj.object_id
+        node = _find_tree_node(self._world_tree.root, target_kind, target_id)
+        if node is None:
+            return
+        _expand_node_chain(node)
+        self._world_tree.refresh()
+        self._world_tree.call_after_refresh(self._select_tree_node, node)
+
+    def _select_tree_node(self, node) -> None:
+        if not self._world_tree:
+            return
+        self.state.suppress_tree_events = True
+        self._world_tree.move_cursor(node)
+        self._world_tree.select_node(node)
+        self.state.suppress_tree_events = False
 
     def on_key(self, event: Key) -> None:
         if self.state.input_mode:
@@ -488,7 +541,14 @@ def _populate_world_tree(
             object_label.append(f"{obj.name} ")
             object_label.append(f"{obj.position[0]},{obj.position[1]} ")
             object_label.append(obj.symbol, style=obj.color or OBJECT_STYLE)
-            room_node.add(object_label, data=obj.position)
+            room_node.add(
+                object_label,
+                data={
+                    "kind": "object",
+                    "id": obj.object_id,
+                    "position": obj.position,
+                },
+            )
         for char in sorted(characters_by_room.get(room_id, []), key=lambda c: c.id):
             character_label = Text()
             character_label.append(f"{char.name} ")
@@ -496,7 +556,14 @@ def _populate_world_tree(
             if pos:
                 character_label.append(f"{pos[0]},{pos[1]} ")
             character_label.append(char.symbol, style=AGENT_STYLE)
-            room_node.add(character_label, data=pos)
+            room_node.add(
+                character_label,
+                data={
+                    "kind": "character",
+                    "id": char.id,
+                    "position": pos,
+                },
+            )
 
     for room in state.rooms:
         bounds = room.bounds
@@ -1109,6 +1176,25 @@ def _find_spawn_position(
             if _is_walkable(world_map, x, y):
                 return (x, y)
     return (bounds.x + 1, bounds.y + 1)
+
+
+def _find_tree_node(root, kind: str, node_id: str):
+    data = getattr(root, "data", None)
+    if isinstance(data, dict) and data.get("kind") == kind and data.get("id") == node_id:
+        return root
+    for child in getattr(root, "children", []):
+        found = _find_tree_node(child, kind, node_id)
+        if found is not None:
+            return found
+    return None
+
+
+def _expand_node_chain(node) -> None:
+    current = node
+    while current is not None:
+        if getattr(current, "children", None):
+            current.expand()
+        current = current.parent
 
 
 def _is_walkable(world_map: WorldMap, x: int, y: int) -> bool:
